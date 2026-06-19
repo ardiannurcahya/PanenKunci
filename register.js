@@ -476,25 +476,38 @@ async function register() {
     if (CONFIG.captchaMode === 'audio') {
       console.log('  Auto-solving captcha with audio (offline, free)...');
 
-      // Wait for reCAPTCHA checkbox to load
-      try {
-        await page.waitForSelector('iframe[title="reCAPTCHA"]', { state: 'attached', timeout: 10000 });
-        console.log('  reCAPTCHA checkbox detected, clicking...');
+      // Wait for reCAPTCHA checkbox to load (with retry)
+      console.log('  Waiting for reCAPTCHA to load...');
+      let checkboxClicked = false;
+      for (let attempt = 0; attempt < 5 && !checkboxClicked; attempt++) {
+        try {
+          await page.waitForSelector('iframe[title="reCAPTCHA"]', { state: 'attached', timeout: 20000 });
+          await sleep(rand(1000, 2000)); // let iframe fully render
 
-        // Click the "I'm not a robot" checkbox inside the recaptcha iframe
-        const recaptchaFrame = await page.$('iframe[title="reCAPTCHA"]');
-        if (recaptchaFrame) {
-          const frame = await recaptchaFrame.contentFrame();
-          if (frame) {
-            const checkbox = await frame.$('.recaptcha-checkbox-border');
-            if (checkbox) {
-              await checkbox.click();
-              console.log('  Checkbox clicked, waiting for challenge...');
-              await sleep(2000);
+          const recaptchaFrame = await page.$('iframe[title="reCAPTCHA"]');
+          if (recaptchaFrame) {
+            const frame = await recaptchaFrame.contentFrame();
+            if (frame) {
+              await frame.waitForSelector('.recaptcha-checkbox-border', { state: 'visible', timeout: 5000 });
+              const checkbox = await frame.$('.recaptcha-checkbox-border');
+              if (checkbox) {
+                await checkbox.click();
+                console.log('  Checkbox clicked, waiting for challenge...');
+                await sleep(rand(2000, 3000));
+                checkboxClicked = true;
+              }
             }
           }
+        } catch (_) {
+          if (attempt < 4) {
+            console.log(`  Checkbox not ready (attempt ${attempt + 1}/5), retrying...`);
+            await sleep(1000);
+          }
         }
-      } catch (_) {}
+      }
+      if (!checkboxClicked) {
+        console.log('  [WARN] Could not click checkbox, trying solve anyway...');
+      }
 
       try {
         process.env.VERBOSE = '1';
