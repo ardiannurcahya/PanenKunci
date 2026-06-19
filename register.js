@@ -108,53 +108,35 @@ async function solveMiCaptcha(page, retries = 3) {
       if (!src) { await sleep(1000); continue; }
       const imgUrl = new URL(src, page.url()).href;
 
-      // Try direct URL first, fallback to base64
-      let imageContent = { type: 'image_url', image_url: { url: imgUrl } };
-      let attemptType = 'url';
+      // Download captcha image with session cookies
+      const cookies = await page.context().cookies();
+      const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+      const resp = await fetch(imgUrl, { headers: { Cookie: cookieHeader } });
+      if (!resp.ok) { console.log(`  Fetch failed: ${resp.status}`); continue; }
+      const buffer = Buffer.from(await resp.arrayBuffer());
+      const base64 = buffer.toString('base64');
+      const mime = buffer[0] === 0xFF ? 'image/jpeg' : 'image/png';
 
-      try {
-        const completion1 = await client.chat.completions.create({
-          model: 'mimo-v2.5',
-          messages: [
-            { role: 'system', content: 'Read the captcha. Output ONLY the code.' },
-            { role: 'user', content: [imageContent] },
-          ],
-          max_completion_tokens: 200,
-          extra_body: { thinking: { type: 'disabled' } },
-        });
-
-        if (completion1.choices[0]?.message?.content || completion1.choices[0]?.message?.reasoning_content) {
-          // URL worked, use this response
-          var completion = completion1;
-        } else {
-          throw new Error('Empty response from URL');
-        }
-      } catch (_) {
-        // Fallback to base64
-        console.log('  Direct URL failed, trying base64...');
-        attemptType = 'base64';
-        const cookies = await page.context().cookies();
-        const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-        const resp = await fetch(imgUrl, { headers: { Cookie: cookieHeader } });
-        if (!resp.ok) { console.log(`  Fetch failed: ${resp.status}`); continue; }
-        const buffer = Buffer.from(await resp.arrayBuffer());
-        const base64 = buffer.toString('base64');
-        const mime = (resp.headers.get('content-type') || '').includes('image')
-          ? resp.headers.get('content-type')
-          : (buffer[0] === 0xFF ? 'image/jpeg' : 'image/png');
-
-        var completion = await client.chat.completions.create({
-          model: 'mimo-v2.5',
-          messages: [
-            { role: 'system', content: 'Read the captcha. Output ONLY the code.' },
-            { role: 'user', content: [{ type: 'image_url', image_url: { url: `data:${mime};base64,${base64}` } }] },
-          ],
-          max_completion_tokens: 200,
-          extra_body: { thinking: { type: 'disabled' } },
-        });
-      }
-
-      console.log(`  MiMo (${attemptType}) response...`);
+      const completion = await client.chat.completions.create({
+        model: 'mimo-v2.5',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image_url',
+                image_url: { url: `data:${mime};base64,${base64}` },
+              },
+              {
+                type: 'text',
+                text: 'Read the captcha alphanumeric code. Output ONLY the code, nothing else.',
+              },
+            ],
+          },
+        ],
+        max_completion_tokens: 200,
+        extra_body: { thinking: { type: 'disabled' } },
+      });
 
       const raw = completion.choices[0]?.message;
       let text = ((raw?.content || '') + ' ' + (raw?.reasoning_content || '')).trim();
