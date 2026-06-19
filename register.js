@@ -122,8 +122,8 @@ async function solveMiCaptcha(page, retries = 3) {
         model: 'mimo-v2.5',
         messages: [
           {
-            role: 'system',
-            content: 'Reply ONLY with the text visible in the image. No explanation. Output format: just the characters.',
+            role: 'user',
+            content: 'Type the exact characters shown in this image. Output ONLY the alphanumeric code — no words, no explanation.',
           },
           {
             role: 'user',
@@ -136,16 +136,25 @@ async function solveMiCaptcha(page, retries = 3) {
           },
         ],
         max_completion_tokens: 200,
+        stop: ['\n', '.', ' '],
       });
 
       const raw = completion.choices[0]?.message;
-      const fullText = (raw?.content || '') + ' ' + (raw?.reasoning_content || '');
+      let fullText = (raw?.content || '') + ' ' + (raw?.reasoning_content || '');
       console.log(`  Raw: ${fullText.trim().slice(0, 200)}...`);
 
-      // Extract alphanumeric code (4-8 chars) from response
-      const matches = [...fullText.matchAll(/\b([A-Za-z0-9]{4,8})\b/g)];
-      const codes = matches.map(m => m[1]).filter(c => !/^\d{4}$/.test(c) || parseInt(c) > 2025);
-      const code = codes[0] || fullText.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8);
+      // Strip thinking/prefix noise
+      fullText = fullText.replace(/Thinking Process:[\s\S]*?^\d+\.\s*\*\*Main Answer:/m, '');
+      fullText = fullText.replace(/\*\*Thinking Process:?\*\*[\s\S]*?(?=\*\*Result|\*\*Answer|\*\*Code|\*\*Text|$)/, '');
+      fullText = fullText.replace(/^[\s\S]*?\*\*(?:Answer|Code|Text|Result):?\*\*\s*/m, '');
+
+      // Extract alphanumeric code (4-8 chars)
+      const words = fullText.match(/[A-Za-z0-9]+/g) || [];
+      const noise = new Set(['thinking', 'process', 'analyze', 'request', 'user', 'wants', 'identify', 'output', 'text', 'image', 'captcha', 'characters', 'the', 'is', 'to', 'of', 'in', 'and', 'it', 'that', 'this', 'with', 'from', 'for', 'on', 'are', 'be', 'has', 'have', 'not', 'but', 'or', 'as', 'at', 'by', 'if', 'no', 'so', 'we', 'he', 'she', 'they', 'was', 'were', 'been', 'can', 'will', 'would', 'could', 'should', 'may', 'might', 'shall', 'must', 'need', 'see', 'read', 'found', 'appears', 'shows', 'contains', 'include', 'seems', 'looks', 'like', 'display', 'show']);
+      const candidates = words.filter(w =>
+        w.length >= 4 && w.length <= 8 && !noise.has(w.toLowerCase()) && !/^\d{4}$/.test(w)
+      );
+      const code = candidates[0] || fullText.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8);
 
       console.log(`  MiMo result: "${code}"`);
 
