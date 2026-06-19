@@ -1,6 +1,13 @@
-# Xiaomi MiMo Auto Register
+# Auto Register
 
-Automated account registration bot for [Xiaomi MiMo API Open Platform](https://platform.xiaomimimo.com) using Playwright + temporary email.
+Multi-platform automated account registration bot using Playwright + temporary email.
+
+## Supported Platforms
+
+| Platform | Status |
+|----------|--------|
+| [Xiaomi MiMo API](https://platform.xiaomimimo.com) | Supported |
+| More coming soon... | — |
 
 ## Features
 
@@ -8,7 +15,7 @@ Automated account registration bot for [Xiaomi MiMo API Open Platform](https://p
 - **Temp email** — generate disposable email + auto-extract OTP verification code
 - **Terms & agreements** — auto-check + confirm
 - **Cookie consent** — auto-accept on every page
-- **API key extraction** — create API key automatically + save to `test.txt`
+- **API key extraction** — create API key automatically + save to file
 - **2captcha ready** — fill in API key, set `captchaMode: '2captcha'`
 
 ## Prerequisites
@@ -35,6 +42,8 @@ Edit the `CONFIG` section in `register.js`:
 
 ```js
 const CONFIG = {
+  registerUrl: 'https://...',    // platform registration URL
+  consoleUrl: 'https://...',     // platform console URL
   password: 'PortoAuto2025!',    // account password
   region: 'Indonesia',           // region (auto-detected from URL)
   apiKeyName: 'auto-xxx',        // API key name prefix
@@ -50,13 +59,13 @@ const CONFIG = {
 |------|-------------|
 | 1 | Launch Chromium browser |
 | 2 | Generate temporary email |
-| 3 | Open Xiaomi registration page + accept cookies |
+| 3 | Open registration page + accept cookies |
 | 4 | Region auto-detected |
 | 5 | Fill email, password, confirm password, agree checkbox |
 | 6 | Submit form + **manual captcha** (auto-detect solved) |
 | 7 | Wait for OTP email → auto-extract → auto-fill |
 | 8 | Terms & agreements (checklist + confirm) |
-| 9 | Redirect to platform console + accept cookies |
+| 9 | Redirect to console + accept cookies |
 | 10 | Navigate to API Keys → Create API Key |
 | 11 | Extract API key → save to `test.txt` |
 
@@ -65,14 +74,14 @@ const CONFIG = {
 Format in `test.txt` (append, not overwrite):
 
 ```
-# Xiaomi MiMo API Key - Generated 2026-06-19T...
-Email: user_xxx@moymoy.me
+# Auto Register - Generated 2026-06-19T...
+Email: user_xxx@domain.com
 Password: PortoAuto2025!
 API Key Name: auto-xxx
 API Key: sk-xxxxxxxxxxxxxxxxx
 ```
 
-## Files
+## File Structure
 
 | File | Description |
 |------|-------------|

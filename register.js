@@ -498,7 +498,7 @@ async function register() {
 
     // Save to file
     const outputData = [
-      `# Xiaomi MiMo API Key - Generated ${new Date().toISOString()}`,
+      `# Auto Register - Generated ${new Date().toISOString()}`,
       `Email: ${email}`,
       `Password: ${CONFIG.password}`,
       `API Key Name: ${CONFIG.apiKeyName}`,
