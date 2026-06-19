@@ -359,8 +359,18 @@ async function register() {
     // Handle captcha
     if (CONFIG.captchaMode === 'audio') {
       console.log('  Auto-solving captcha with audio (offline, free)...');
+
+      // Wait for reCAPTCHA to load
       try {
-        await solveRecaptchaAudio(page);
+        await page.waitForSelector('iframe[title="reCAPTCHA"], iframe[src*="recaptcha/api2/bframe"]', { state: 'attached', timeout: 10000 });
+        console.log('  reCAPTCHA detected, solving...');
+      } catch (_) {
+        console.log('  [WARN] reCAPTCHA iframe not found, trying anyway...');
+      }
+
+      try {
+        process.env.VERBOSE = '1';
+        await solveRecaptchaAudio(page, { wait: 10000, retry: 3 });
         console.log('  Captcha solved via audio!');
       } catch (e) {
         console.log(`  Audio solver failed: ${e.message}`);
