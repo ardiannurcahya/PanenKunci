@@ -155,8 +155,6 @@ async function solveMiCaptcha(page, retries = 3) {
 
       console.log(`  MiMo result: "${code}"`);
 
-      console.log(`  MiMo result: "${code}"`);
-
       if (code.length >= 4 && code.length <= 8) {
         await input.fill('');
         await input.fill(code);
@@ -172,8 +170,8 @@ async function solveMiCaptcha(page, retries = 3) {
             return true;
           }
           console.log('  Wrong, retrying...');
-          const refresh = page.locator('.mi-captcha-field__image, img[title="Refresh"]').first();
-          await refresh.click().catch(() => {});
+        } else {
+          console.log('  Submit button not found, retrying...');
         }
       } else {
         console.log('  Invalid code length, retrying...');
