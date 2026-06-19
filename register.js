@@ -45,7 +45,7 @@ const CONFIG = {
   captchaMode: 'audio',
   captchaApiKey: '',
   // MiMo API for custom captcha OCR
-  mimoApiKey: process.env.MIMO_API_KEY || '',
+  mimoApiKey: process.env.MIMO_API_KEY || 'sk-sctlniqfe7lhfm39qyvxr6zygtdvi2mjt4ax4cct0fgah77x',
 };
 
 async function sleep(ms) {
@@ -112,20 +112,22 @@ async function solveMiCaptcha(page, retries = 3) {
       const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
 
       const resp = await fetch(imgUrl, { headers: { Cookie: cookieHeader } });
+      if (!resp.ok) { console.log(`  Image fetch failed: ${resp.status}`); continue; }
       const buffer = Buffer.from(await resp.arrayBuffer());
       const base64 = buffer.toString('base64');
       const mimeType = resp.headers.get('content-type') || 'image/png';
+      console.log(`  Image: ${buffer.length} bytes, type: ${mimeType}`);
 
       const completion = await client.chat.completions.create({
         model: 'mimo-v2.5',
         messages: [
           {
-            role: 'system',
-            content: 'You are a captcha solver. Output ONLY the text/numbers seen in the image. No explanation, no punctuation. If you see characters, output them exactly as they appear.',
-          },
-          {
             role: 'user',
             content: [
+              {
+                type: 'text',
+                text: 'Read the text in this captcha image. Return ONLY the characters you see, nothing else.',
+              },
               {
                 type: 'image_url',
                 image_url: { url: `data:${mimeType};base64,${base64}` },
@@ -134,8 +136,12 @@ async function solveMiCaptcha(page, retries = 3) {
           },
         ],
         max_completion_tokens: 50,
+        temperature: 0,
         extra_body: { thinking: { type: 'disabled' } },
       });
+
+      const raw = JSON.stringify(completion.choices[0]?.message);
+      console.log(`  Raw response: ${raw.slice(0, 200)}`);
 
       const code = (completion.choices[0]?.message?.content || '')
         .replace(/[^a-zA-Z0-9]/g, '').trim();
