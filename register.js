@@ -1,7 +1,7 @@
 const { chromium } = require('playwright');
 const TempMail = require('./tempmail.js');
 const { solve: solveRecaptchaAudio } = require('recaptcha-solver');
-const { execSync } = require('child_process');
+const { execSync, spawnSync } = require('child_process');
 
 function findFfmpeg() {
   // Check common paths
@@ -47,6 +47,60 @@ const CONFIG = {
 
 async function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
+}
+
+async function solveCaptchaWithPython(imgLocator, page, retries = 3) {
+  const tmpDir = require('os').tmpdir();
+  const imgPath = path.join(tmpDir, `captcha_${Date.now()}.png`);
+
+  for (let i = 0; i < retries; i++) {
+    console.log(`  OCR attempt ${i + 1}/${retries}...`);
+    await sleep(1000);
+
+    try {
+      // Screenshot the captcha image element
+      await imgLocator.screenshot({ path: imgPath });
+
+      // Run Python OCR
+      const result = spawnSync('python', [path.join(__dirname, 'captcha_ocr.py'), imgPath], {
+        encoding: 'utf-8',
+        timeout: 30000,
+      });
+
+      if (result.error) {
+        console.log(`  Python error: ${result.error.message}`);
+        continue;
+      }
+
+      const code = (result.stdout || '').trim().replace(/[^a-zA-Z0-9]/g, '');
+      console.log(`  OCR result: "${code}"`);
+
+      if (code.length >= 4 && code.length <= 8) {
+        const input = page.locator('.mi-captcha-field input, input[name*="icode"]').first();
+        await input.fill('');
+        await input.fill(code);
+        await sleep(500);
+
+        const submit = page.locator('button[type="submit"], button:has-text("Verify"), button:has-text("Confirm")').first();
+        if (await submit.isVisible({ timeout: 500 }).catch(() => false)) {
+          await submit.click();
+          await sleep(2000);
+
+          if (!(await imgLocator.isVisible({ timeout: 1000 }).catch(() => false))) {
+            return true;
+          }
+          console.log('  Wrong, retrying...');
+        }
+      } else {
+        console.log('  Invalid code length, retrying...');
+      }
+    } catch (e) {
+      console.log(`  OCR error: ${e.message}`);
+    } finally {
+      try { fs.unlinkSync(imgPath); } catch (_) {}
+    }
+  }
+  return false;
 }
 
 async function handleCookies(page) {
@@ -404,14 +458,22 @@ async function register() {
         await solveRecaptchaAudio(page, { wait: 15000, retry: 5, ffmpeg: ffmpegPath });
         console.log('  reCAPTCHA solved via audio!');
 
-        // Check for Xiaomi custom 2nd captcha (text/image) — skip, close browser
+        // Check for Xiaomi custom 2nd captcha (text/image)
         await sleep(2000);
         const customImg = page.locator('.mi-captcha-field__image, img[src*="getCode"], img[src*="icodeType"]').first();
         if (await customImg.isVisible({ timeout: 2000 }).catch(() => false)) {
-          console.log('  >>> XIAOMI CUSTOM CAPTCHA DETECTED — closing browser');
+          console.log('  >>> XIAOMI CUSTOM CAPTCHA DETECTED — running OCR...');
           await page.screenshot({ path: 'custom_captcha.png' });
-          await browser.close();
-          process.exit(0);
+
+          const input = page.locator('.mi-captcha-field input, input[name*="icode"]').first();
+          const solved = await solveCaptchaWithPython(customImg, page);
+          if (solved) {
+            console.log('  Custom captcha solved!');
+          } else {
+            console.log('  >>> OCR failed, closing browser');
+            await browser.close();
+            process.exit(0);
+          }
         }
       } catch (e) {
         console.log(`  Audio solver failed: ${e.message}`);

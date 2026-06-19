@@ -19,7 +19,7 @@ function run() {
       console.log(`\nRun #${count} stopped (code ${code}).`);
     }
     // Random delay 60-120s to avoid rate limiting
-    const delay = 60000 + Math.floor(Math.random() * 60000);
+    const delay = 20000 + Math.floor(Math.random() * 30000);
     console.log(`Waiting ${Math.round(delay / 1000)}s before next run...\n`);
     setTimeout(run, delay);
   });
