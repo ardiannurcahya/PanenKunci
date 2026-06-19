@@ -470,9 +470,13 @@ async function register() {
           if (solved) {
             console.log('  Custom captcha solved!');
           } else {
-            console.log('  >>> OCR failed, closing browser');
-            await browser.close();
-            process.exit(0);
+            console.log('  >>> OCR failed — solve manually within 20s or browser closes');
+            const manualSolved = await waitForCaptchaSolved(page, 20000);
+            if (!manualSolved) {
+              console.log('  Timeout, closing browser');
+              await browser.close();
+              process.exit(0);
+            }
           }
         }
       } catch (e) {
