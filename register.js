@@ -401,7 +401,7 @@ async function register() {
 
       try {
         process.env.VERBOSE = '1';
-        await solveRecaptchaAudio(page, { wait: 10000, retry: 3, ffmpeg: ffmpegPath });
+        await solveRecaptchaAudio(page, { wait: 15000, retry: 5, ffmpeg: ffmpegPath });
         console.log('  Captcha solved via audio!');
       } catch (e) {
         console.log(`  Audio solver failed: ${e.message}`);
