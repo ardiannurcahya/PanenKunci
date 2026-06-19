@@ -305,9 +305,12 @@ async function register() {
     const otpSubmit = page.locator('button[type="submit"], button:has-text("Verify"), button:has-text("Submit"), button:has-text("Confirm")').first();
     await otpSubmit.click();
 
-    // Step 8: Navigate to platform console
-    console.log('[8/11] Navigating to platform console...');
-    await page.goto(CONFIG.consoleUrl, { waitUntil: 'networkidle', timeout: CONFIG.navigateTimeout });
+    // Step 8: Wait for OAuth redirect chain to platform console
+    console.log('[8/11] Waiting for OAuth redirect to platform console...');
+    await page.waitForURL(/platform\.xiaomimimo\.com\/console/, { timeout: 30000 }).catch(async () => {
+      console.log('  Redirect not detected, navigating manually...');
+      await page.goto(CONFIG.consoleUrl, { waitUntil: 'networkidle', timeout: CONFIG.navigateTimeout });
+    });
     await handleCookies(page);
     await sleep(2000);
 
