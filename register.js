@@ -1,5 +1,6 @@
 const { chromium } = require('playwright');
 const TempMail = require('./tempmail.js');
+const { solve: solveRecaptchaAudio } = require('recaptcha-solver');
 
 const fs = require('fs');
 const path = require('path');
@@ -20,7 +21,7 @@ const CONFIG = {
   emailTimeout: 120000,
   otpTimeout: 180000,
   navigateTimeout: 30000,
-  // Captcha mode: 'manual' | '2captcha'
+  // Captcha mode: 'manual' | 'audio' | '2captcha'
   captchaMode: 'manual',
   captchaApiKey: '',
 };
@@ -356,7 +357,17 @@ async function register() {
     await sleep(3000);
 
     // Handle captcha
-    if (CONFIG.captchaMode === '2captcha' && CONFIG.captchaApiKey) {
+    if (CONFIG.captchaMode === 'audio') {
+      console.log('  Auto-solving captcha with audio (offline, free)...');
+      try {
+        await solveRecaptchaAudio(page);
+        console.log('  Captcha solved via audio!');
+      } catch (e) {
+        console.log(`  Audio solver failed: ${e.message}`);
+        console.log('  Falling back to manual solve...');
+        await waitForCaptchaSolved(page, 120000);
+      }
+    } else if (CONFIG.captchaMode === '2captcha' && CONFIG.captchaApiKey) {
       console.log('  Auto-solving captcha with 2captcha...');
       await solveRecaptchaWith2captcha(page, CONFIG.captchaApiKey);
     } else {
