@@ -19,7 +19,7 @@ const CONFIG = {
   // Timeouts (ms)
   emailTimeout: 120000,
   otpTimeout: 180000,
-  navigateTimeout: 15000,
+  navigateTimeout: 30000,
   // Captcha mode: 'manual' | '2captcha'
   captchaMode: 'manual',
   captchaApiKey: '',
@@ -207,7 +207,7 @@ async function register() {
 
     // Step 2: Navigate to registration page
     console.log('[3/11] Navigating to registration page...');
-    await page.goto(CONFIG.registerUrl, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.goto(CONFIG.registerUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await handleCookies(page);
     await sleep(2000);
 
@@ -271,7 +271,7 @@ async function register() {
 
     // Step 7: Wait for OTP email
     console.log('[7/11] Waiting for OTP email...');
-    const otp = await tempmail.waitForOtp(email, CONFIG.otpTimeout, 5000);
+    const otp = await tempmail.waitForOtp(email, CONFIG.otpTimeout, 3000);
 
     if (!otp) {
       console.log('  TIMEOUT: No OTP received. Check browser manually.');
@@ -309,7 +309,7 @@ async function register() {
     console.log('[8/11] Waiting for OAuth redirect to platform console...');
     await page.waitForURL(/platform\.xiaomimimo\.com\/console/, { timeout: 3000 }).catch(async () => {
       console.log('  Redirect not detected, navigating manually...');
-      await page.goto(CONFIG.consoleUrl, { waitUntil: 'networkidle', timeout: CONFIG.navigateTimeout });
+      await page.goto(CONFIG.consoleUrl, { waitUntil: 'domcontentloaded', timeout: CONFIG.navigateTimeout });
     });
 
     // Step 9: Handle terms & agreements (appears after redirect)
@@ -357,7 +357,7 @@ async function register() {
       for (const p of apiKeyPaths) {
         const url = CONFIG.consoleUrl + p;
         try {
-          await page.goto(url, { waitUntil: 'networkidle', timeout: 8000 });
+          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 8000 });
           await handleCookies(page);
           await sleep(1500);
           foundApiPage = true;
