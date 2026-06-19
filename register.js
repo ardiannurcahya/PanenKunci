@@ -28,7 +28,9 @@ const fs = require('fs');
 const path = require('path');
 
 const CONFIG = {
-  // Xiaomi registration URL (from your referral link)
+  // Landing page (referral link)
+  landingUrl: 'https://platform.xiaomimimo.com/?ref=3VNJF5',
+  // Registration URL (fallback, normally reached via landing → sign up)
   registerUrl: 'https://global.account.xiaomi.com/fe/service/register?_group=DEFAULT&_locale=en&region=US&sid=api-platform&_uRegion=ID',
   // Console URL after login
   consoleUrl: 'https://platform.xiaomimimo.com/console',
@@ -421,11 +423,30 @@ async function register() {
     const email = inbox.address;
     console.log(`  Email: ${email}`);
 
-    // Step 2: Navigate to registration page
-    console.log('[3/11] Navigating to registration page...');
-    await page.goto(CONFIG.registerUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    // Step 2: Navigate to landing page → click Sign Up → redirect to registration
+    console.log('[3/11] Opening landing page...');
+    await page.goto(CONFIG.landingUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await handleCookies(page);
-    await sleep(2000);
+    await sleep(rand(2000, 3000));
+
+    console.log('  Clicking Sign Up...');
+    const signUpBtn = page.locator(
+      'a:has-text("Sign Up"), a:has-text("Sign up"), a:has-text("Register"), ' +
+      'button:has-text("Sign Up"), button:has-text("Register"), ' +
+      '[href*="register"], [href*="signup"], [href*="sign-up"]'
+    ).first();
+    try {
+      await signUpBtn.click({ timeout: 5000 });
+      console.log('  Sign Up clicked, waiting for redirect...');
+    } catch (_) {
+      console.log('  Sign Up button not found, navigating directly...');
+      await page.goto(CONFIG.registerUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    }
+
+    // Wait for Xiaomi registration page to load
+    await page.waitForURL(/account\.xiaomi\.com/, { timeout: 15000 }).catch(() => {});
+    await sleep(rand(2000, 3000));
+    await handleCookies(page);
 
     // Step 3: Select region (skipped - auto-detected from _uRegion param)
     console.log('[4/11] Region auto-detected (via URL param), skipping manual selection...');
