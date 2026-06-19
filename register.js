@@ -298,19 +298,15 @@ async function register() {
     // Submit OTP
     const otpSubmit = page.locator('button[type="submit"], button:has-text("Verify"), button:has-text("Submit"), button:has-text("Confirm")').first();
     await otpSubmit.click();
-    await sleep(3000);
 
-    // Step 8: Handle terms & agreements after OTP
-    console.log('[8/11] Checking terms & agreements...');
-    await handleTermsAgreement(page);
-
-    // Step 9: Navigate to platform console
-    console.log('[9/11] Navigating to platform console...');
+    // Step 8: Navigate to platform console
+    console.log('[8/11] Navigating to platform console...');
     await page.goto(CONFIG.consoleUrl, { waitUntil: 'networkidle', timeout: CONFIG.navigateTimeout });
     await handleCookies(page);
-    await sleep(3000);
+    await sleep(2000);
 
-    // Check again for terms (might appear after redirect)
+    // Step 9: Handle terms & agreements (appears after redirect)
+    console.log('[9/11] Checking terms & agreements...');
     await handleTermsAgreement(page);
 
     await page.screenshot({ path: 'registered.png' });
