@@ -123,38 +123,35 @@ async function solveMiCaptcha(page, retries = 3) {
         messages: [
           {
             role: 'user',
-            content: 'Type the exact characters shown in this image. Output ONLY the alphanumeric code — no words, no explanation.',
-          },
-          {
-            role: 'user',
             content: [
               {
                 type: 'image_url',
                 image_url: { url: `data:${mimeType};base64,${base64}`, detail: 'high' },
               },
+              {
+                type: 'text',
+                text: 'Output ONLY the alphanumeric code from this captcha image. Do NOT include any other words.',
+              },
             ],
           },
         ],
-        max_completion_tokens: 200,
-        stop: ['\n', '.', ' '],
+        max_completion_tokens: 50,
+        stop: [' ', '\n', '.', ',', ':', '-'],
       });
 
       const raw = completion.choices[0]?.message;
-      let fullText = (raw?.content || '') + ' ' + (raw?.reasoning_content || '');
-      console.log(`  Raw: ${fullText.trim().slice(0, 200)}...`);
+      let text = ((raw?.content || '') + ' ' + (raw?.reasoning_content || '')).trim();
 
-      // Strip thinking/prefix noise
-      fullText = fullText.replace(/Thinking Process:[\s\S]*?^\d+\.\s*\*\*Main Answer:/m, '');
-      fullText = fullText.replace(/\*\*Thinking Process:?\*\*[\s\S]*?(?=\*\*Result|\*\*Answer|\*\*Code|\*\*Text|$)/, '');
-      fullText = fullText.replace(/^[\s\S]*?\*\*(?:Answer|Code|Text|Result):?\*\*\s*/m, '');
+      // Strip known MiMo prefix noise
+      text = text.replace(/^.*?Thinking Process:?\s*/is, '');
 
-      // Extract alphanumeric code (4-8 chars)
-      const words = fullText.match(/[A-Za-z0-9]+/g) || [];
-      const noise = new Set(['thinking', 'process', 'analyze', 'request', 'user', 'wants', 'identify', 'output', 'text', 'image', 'captcha', 'characters', 'the', 'is', 'to', 'of', 'in', 'and', 'it', 'that', 'this', 'with', 'from', 'for', 'on', 'are', 'be', 'has', 'have', 'not', 'but', 'or', 'as', 'at', 'by', 'if', 'no', 'so', 'we', 'he', 'she', 'they', 'was', 'were', 'been', 'can', 'will', 'would', 'could', 'should', 'may', 'might', 'shall', 'must', 'need', 'see', 'read', 'found', 'appears', 'shows', 'contains', 'include', 'seems', 'looks', 'like', 'display', 'show']);
-      const candidates = words.filter(w =>
-        w.length >= 4 && w.length <= 8 && !noise.has(w.toLowerCase()) && !/^\d{4}$/.test(w)
-      );
-      const code = candidates[0] || fullText.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8);
+      // Find all alphanumeric words, take LAST one (4-8 chars, not a year)
+      const words = text.match(/[A-Za-z0-9]+/g) || [];
+      const skip = new Set(['thinking','process','analyze','request','user','identify','output','text','image','captcha','characters','appears','contains','shows','seems','looks','found','display','alphanumeric','code','characters','words','letters','numbers','follows','read','appear','first','second','third','fourth','fifth','each','following','these','those','theyre','theyve','there','their','what','where','which','while','would','could','should','about','above','after','again','being','below','could','doing','every','going','having','other','still','today','under','using','were','also','been','does','like','make','many','more','same','some','such','than','that','them','then','this','upon','very','well','when','with','your','just','only','from','over','into','take']);
+      const candidates = words.filter(w => w.length >= 4 && w.length <= 8 && !skip.has(w.toLowerCase()) && !/^\d{4}$/.test(w));
+      const code = candidates[candidates.length - 1] || '';
+
+      console.log(`  MiMo result: "${code}"`);
 
       console.log(`  MiMo result: "${code}"`);
 
