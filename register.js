@@ -402,7 +402,18 @@ async function register() {
       try {
         process.env.VERBOSE = '1';
         await solveRecaptchaAudio(page, { wait: 15000, retry: 5, ffmpeg: ffmpegPath });
-        console.log('  Captcha solved via audio!');
+        console.log('  reCAPTCHA solved via audio!');
+
+        // Check for Xiaomi custom 2nd captcha (text/image)
+        await sleep(2000);
+        const customCaptcha = await page.locator('img[src*="captcha"], img[src*="verify"], img[src*="code"], [class*="captcha"] img, [class*="verify"] img').first();
+        if (await customCaptcha.isVisible({ timeout: 2000 }).catch(() => false)) {
+          console.log('  >>> SECOND CAPTCHA DETECTED (Xiaomi custom text/image)');
+          console.log('  >>> Please solve it manually in the browser...');
+          await page.screenshot({ path: 'custom_captcha.png' });
+          const solved = await waitForCaptchaSolved(page, 120000);
+          if (!solved) console.log('  [WARN] 2nd captcha timeout, proceeding...');
+        }
       } catch (e) {
         console.log(`  Audio solver failed: ${e.message}`);
         console.log('  Falling back to manual solve...');
