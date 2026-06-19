@@ -379,13 +379,25 @@ async function register() {
     if (CONFIG.captchaMode === 'audio') {
       console.log('  Auto-solving captcha with audio (offline, free)...');
 
-      // Wait for reCAPTCHA to load
+      // Wait for reCAPTCHA checkbox to load
       try {
-        await page.waitForSelector('iframe[title="reCAPTCHA"], iframe[src*="recaptcha/api2/bframe"]', { state: 'attached', timeout: 10000 });
-        console.log('  reCAPTCHA detected, solving...');
-      } catch (_) {
-        console.log('  [WARN] reCAPTCHA iframe not found, trying anyway...');
-      }
+        await page.waitForSelector('iframe[title="reCAPTCHA"]', { state: 'attached', timeout: 10000 });
+        console.log('  reCAPTCHA checkbox detected, clicking...');
+
+        // Click the "I'm not a robot" checkbox inside the recaptcha iframe
+        const recaptchaFrame = await page.$('iframe[title="reCAPTCHA"]');
+        if (recaptchaFrame) {
+          const frame = await recaptchaFrame.contentFrame();
+          if (frame) {
+            const checkbox = await frame.$('.recaptcha-checkbox-border');
+            if (checkbox) {
+              await checkbox.click();
+              console.log('  Checkbox clicked, waiting for challenge...');
+              await sleep(2000);
+            }
+          }
+        }
+      } catch (_) {}
 
       try {
         process.env.VERBOSE = '1';
