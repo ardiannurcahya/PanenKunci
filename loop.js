@@ -1,4 +1,4 @@
-// loop.js — Keeps re-running register.js until stopped manually (Ctrl+C)
+// loop.js — Keeps re-running register.js with delays to avoid rate limiting
 const { spawn } = require('child_process');
 
 let count = 0;
@@ -16,10 +16,12 @@ function run() {
     if (code === 0) {
       console.log(`\nRun #${count} completed.`);
     } else {
-      console.log(`\nRun #${count} stopped (code ${code}) — likely custom captcha.`);
+      console.log(`\nRun #${count} stopped (code ${code}).`);
     }
-    console.log('Restarting in 3 seconds...\n');
-    setTimeout(run, 3000);
+    // Random delay 60-120s to avoid rate limiting
+    const delay = 60000 + Math.floor(Math.random() * 60000);
+    console.log(`Waiting ${Math.round(delay / 1000)}s before next run...\n`);
+    setTimeout(run, delay);
   });
 }
 
