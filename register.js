@@ -141,37 +141,43 @@ async function handleTermsAgreement(page) {
   console.log('  [WARN] Confirm button not found, proceeding anyway...');
 }
 
-async function waitForCaptchaSolved(page, maxWaitMs = 120000) {
+async function waitForCaptchaSolved(page, maxWaitMs = 180000) {
   const pollMs = 2000;
   const deadline = Date.now() + maxWaitMs;
   const startUrl = page.url();
 
+  // Wait a moment for captcha to fully load before checking
+  await sleep(3000);
+
   while (Date.now() < deadline) {
-    // Signal 1: URL changed (form submitted, redirect in progress)
+    // Signal 1: URL changed (most reliable — form actually submitted)
     const currentUrl = page.url();
     if (currentUrl !== startUrl) {
       await sleep(500);
       return true;
     }
 
-    // Signal 2: OTP / verification input appeared
+    // Signal 2: OTP / verification input appeared on current page
     const otpField = page.locator('input[maxlength="6"], input[maxlength="4"], input[placeholder*="code" i], input[placeholder*="OTP" i], input[placeholder*="verif" i]');
     if (await otpField.isVisible({ timeout: 500 }).catch(() => false)) {
       await sleep(500);
       return true;
     }
 
-    // Signal 3: Known captcha iframe was visible, now gone
-    const captchaFrame = page.locator('iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[src*="captcha"], [class*="captcha"] iframe');
-    const captchaWasHere = await captchaFrame.isVisible({ timeout: 500 }).catch(() => false);
-    if (!captchaWasHere) {
-      // No known captcha iframe — maybe custom captcha, check for form state change
-      const submitBtn = page.locator('button[type="submit"]:not([disabled])').first();
-      const stillClickable = await submitBtn.isVisible({ timeout: 500 }).catch(() => false);
-      if (!stillClickable) {
-        await sleep(500);
-        return true;
+    // Signal 3: Known captcha iframe appeared then disappeared
+    const captchaFrame = page.locator('iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[src*="captcha"]');
+    const captchaVisible = await captchaFrame.isVisible({ timeout: 500 }).catch(() => false);
+    if (captchaVisible) {
+      // Captcha is on screen — wait for it to disappear
+      const captchaDeadline = Date.now() + 120000;
+      while (Date.now() < captchaDeadline) {
+        if (!(await captchaFrame.isVisible({ timeout: 500 }).catch(() => false))) {
+          await sleep(1000);
+          return true;
+        }
+        await sleep(pollMs);
       }
+      return false; // Captcha didn't disappear within timeout
     }
 
     await sleep(pollMs);
