@@ -1,4 +1,7 @@
-const { chromium } = require('playwright');
+const { chromium } = require('playwright-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth')();
+chromium.use(StealthPlugin);
+
 const TempMail = require('./tempmail.js');
 const { solve: solveRecaptchaAudio } = require('recaptcha-solver');
 const { execSync, spawnSync } = require('child_process');
@@ -43,10 +46,21 @@ const CONFIG = {
   // Captcha mode: 'manual' | 'audio' | '2captcha'
   captchaMode: 'audio',
   captchaApiKey: '',
+  // Proxy (optional): 'http://user:pass@host:port' or empty to disable
+  proxy: process.env.PROXY || '',
 };
 
 async function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
+}
+
+async function typeHuman(page, selector, text) {
+  const el = page.locator(selector).first();
+  await el.click();
+  for (const char of text) {
+    await el.press(char);
+    await sleep(100 + Math.random() * 200); // 100-300ms delay
+  }
 }
 
 async function solveCaptchaWithPython(imgLocator, page, retries = 3) {
@@ -364,14 +378,23 @@ async function waitForCaptchaSolved(page, maxWaitMs = 180000) {
 
 async function register() {
   console.log('[1/11] Launching browser...');
-  const browser = await chromium.launch({
-    headless: false, // need visible browser for captcha
-    args: ['--disable-blink-features=AutomationControlled'],
-  });
-  const context = await browser.newContext({
+  const launchOpts = {
+    headless: false,
+    args: [
+      '--disable-blink-features=AutomationControlled',
+      '--no-sandbox',
+    ],
+  };
+  if (CONFIG.proxy) {
+    launchOpts.proxy = { server: CONFIG.proxy };
+    console.log(`  Proxy: ${CONFIG.proxy.split('@').pop() || CONFIG.proxy}`);
+  }
+  const browser = await chromium.launch(launchOpts);
+  const contextOpts = {
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
     viewport: { width: 1366, height: 768 },
-  });
+  };
+  const context = await browser.newContext(contextOpts);
   const page = await context.newPage();
 
   try {
@@ -393,10 +416,12 @@ async function register() {
 
     // Step 4: Fill email
     console.log('[5/11] Filling registration form...');
+    // Type email with human-like delays
     const emailInput = page.locator('input[type="text"]').first()
       .or(page.locator('input[name*="email" i], input[name*="account" i], input[placeholder*="email" i], input[placeholder*="Email" i], input[placeholder*="account" i], input[type="email"]').first());
+    await emailInput.click();
     await emailInput.fill(email);
-    await sleep(500);
+    await sleep(300 + Math.random() * 700);
 
     // Fill password
     const passwordInputs = page.locator('input[type="password"]');

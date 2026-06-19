@@ -1,15 +1,31 @@
-// loop.js — Keeps re-running register.js with delays to avoid rate limiting
+// loop.js — Keeps re-running register.js with proxy rotation & delays
 const { spawn } = require('child_process');
+
+// Add proxies here (one per line). Empty = no proxy.
+const PROXIES = [
+  // 'http://user:pass@ip:port',
+  // 'http://user:pass@ip:port',
+];
 
 let count = 0;
 
+function getProxy() {
+  if (PROXIES.length === 0) return '';
+  return PROXIES[count % PROXIES.length];
+}
+
 function run() {
   count++;
-  console.log(`\n=== RUN #${count} ===\n`);
+  const proxy = getProxy();
+  console.log(`\n=== RUN #${count} ${proxy ? `(proxy: ${proxy.split('@').pop()})` : ''} ===\n`);
+
+  const env = { ...process.env };
+  if (proxy) env.PROXY = proxy;
 
   const child = spawn('node', ['register.js'], {
     stdio: 'inherit',
     cwd: __dirname,
+    env,
   });
 
   child.on('exit', (code) => {
@@ -18,7 +34,6 @@ function run() {
     } else {
       console.log(`\nRun #${count} stopped (code ${code}).`);
     }
-    // Random delay 60-120s to avoid rate limiting
     const delay = 20000 + Math.floor(Math.random() * 30000);
     console.log(`Waiting ${Math.round(delay / 1000)}s before next run...\n`);
     setTimeout(run, delay);
