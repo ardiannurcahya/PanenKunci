@@ -115,33 +115,34 @@ async function handleTermsAgreement(page) {
 async function waitForCaptchaSolved(page, maxWaitMs = 120000) {
   const pollMs = 2000;
   const deadline = Date.now() + maxWaitMs;
+  const startUrl = page.url();
 
   while (Date.now() < deadline) {
-    // Check 1: reCAPTCHA iframe gone
-    const recaptchaFrame = page.locator('iframe[src*="recaptcha"], iframe[src*="google.com/recaptcha"]');
-    const recaptchaGone = !(await recaptchaFrame.isVisible({ timeout: 500 }).catch(() => false));
-
-    // Check 2: hCaptcha iframe gone
-    const hcaptchaFrame = page.locator('iframe[src*="hcaptcha"]');
-    const hcaptchaGone = !(await hcaptchaFrame.isVisible({ timeout: 500 }).catch(() => false));
-
-    // Check 3: OTP/code input appeared (means captcha passed)
-    const otpField = page.locator('input[maxlength="6"], input[maxlength="4"], input[placeholder*="code" i], input[placeholder*="OTP" i]');
-    const otpAppeared = await otpField.isVisible({ timeout: 500 }).catch(() => false);
-
-    // Check 4: "checking" or "solved" indicator in DOM
-    const solvedIndicator = page.locator('[class*="recaptcha-checked"], .g-recaptcha[data-callback], #g-recaptcha-response[value]:not([value=""])');
-    const indicatorFound = await solvedIndicator.isVisible({ timeout: 500 }).catch(() => false);
-
-    if (recaptchaGone && hcaptchaGone && (otpAppeared || indicatorFound)) {
+    // Signal 1: URL changed (form submitted, redirect in progress)
+    const currentUrl = page.url();
+    if (currentUrl !== startUrl) {
       await sleep(500);
       return true;
     }
 
-    // Partial match: captcha gone (but OTP not yet appeared) — likely solved
-    if (recaptchaGone && hcaptchaGone) {
-      await sleep(1000);
+    // Signal 2: OTP / verification input appeared
+    const otpField = page.locator('input[maxlength="6"], input[maxlength="4"], input[placeholder*="code" i], input[placeholder*="OTP" i], input[placeholder*="verif" i]');
+    if (await otpField.isVisible({ timeout: 500 }).catch(() => false)) {
+      await sleep(500);
       return true;
+    }
+
+    // Signal 3: Known captcha iframe was visible, now gone
+    const captchaFrame = page.locator('iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[src*="captcha"], [class*="captcha"] iframe');
+    const captchaWasHere = await captchaFrame.isVisible({ timeout: 500 }).catch(() => false);
+    if (!captchaWasHere) {
+      // No known captcha iframe — maybe custom captcha, check for form state change
+      const submitBtn = page.locator('button[type="submit"]:not([disabled])').first();
+      const stillClickable = await submitBtn.isVisible({ timeout: 500 }).catch(() => false);
+      if (!stillClickable) {
+        await sleep(500);
+        return true;
+      }
     }
 
     await sleep(pollMs);
