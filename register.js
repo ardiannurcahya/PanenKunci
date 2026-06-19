@@ -2,6 +2,7 @@ const { chromium } = require('playwright');
 const TempMail = require('./tempmail.js');
 const { solve: solveRecaptchaAudio } = require('recaptcha-solver');
 const { execSync } = require('child_process');
+const { createWorker } = require('tesseract.js');
 
 function findFfmpeg() {
   // Check common paths
@@ -80,6 +81,59 @@ async function handleCookies(page) {
       return;
     }
   }
+}
+
+async function solveMiCaptcha(page, retries = 3) {
+  const img = page.locator('.mi-captcha-field__image, img[src*="getCode"], img[src*="icodeType"]').first();
+  const input = page.locator('.mi-captcha-field input, input[placeholder*="code" i], input[placeholder*="captcha" i], input[name*="icode"]').first();
+
+  for (let i = 0; i < retries; i++) {
+    console.log(`  OCR attempt ${i + 1}/${retries}...`);
+    await sleep(1000);
+
+    try {
+      const src = await img.getAttribute('src');
+      if (!src) { await sleep(1000); continue; }
+
+      const imgUrl = new URL(src, page.url()).href;
+      const cookies = await page.context().cookies();
+      const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+
+      const resp = await fetch(imgUrl, { headers: { Cookie: cookieHeader } });
+      const buffer = Buffer.from(await resp.arrayBuffer());
+
+      const worker = await createWorker('eng', 1, { logger: () => {} });
+      const { data: { text } } = await worker.recognize(buffer);
+      await worker.terminate();
+
+      const code = text.replace(/[^a-zA-Z0-9]/g, '').trim();
+      console.log(`  OCR result: "${code}"`);
+
+      if (code.length >= 4 && code.length <= 8) {
+        await input.fill('');
+        await input.fill(code);
+        await sleep(500);
+
+        const submit = page.locator('button[type="submit"], button:has-text("Verify"), button:has-text("Confirm"), button:has-text("Submit")').first();
+        if (await submit.isVisible({ timeout: 500 }).catch(() => false)) {
+          await submit.click();
+          await sleep(2000);
+
+          // Check if captcha is gone
+          if (!(await img.isVisible({ timeout: 1000 }).catch(() => false))) {
+            console.log('  Mi captcha solved!');
+            return true;
+          }
+          console.log('  Wrong answer, retrying...');
+          const refresh = page.locator('.mi-captcha-field__image, img[title="Refresh"]').first();
+          await refresh.click().catch(() => {});
+        }
+      }
+    } catch (e) {
+      console.log(`  OCR error: ${e.message}`);
+    }
+  }
+  return false;
 }
 
 async function handleTermsAgreement(page) {
@@ -406,13 +460,15 @@ async function register() {
 
         // Check for Xiaomi custom 2nd captcha (text/image)
         await sleep(2000);
-        const customCaptcha = await page.locator('img[src*="captcha"], img[src*="verify"], img[src*="code"], [class*="captcha"] img, [class*="verify"] img').first();
-        if (await customCaptcha.isVisible({ timeout: 2000 }).catch(() => false)) {
-          console.log('  >>> SECOND CAPTCHA DETECTED (Xiaomi custom text/image)');
-          console.log('  >>> Please solve it manually in the browser...');
+        const customImg = page.locator('.mi-captcha-field__image, img[src*="getCode"], img[src*="icodeType"]').first();
+        if (await customImg.isVisible({ timeout: 2000 }).catch(() => false)) {
+          console.log('  >>> XIAOMI CUSTOM CAPTCHA DETECTED');
           await page.screenshot({ path: 'custom_captcha.png' });
-          const solved = await waitForCaptchaSolved(page, 120000);
-          if (!solved) console.log('  [WARN] 2nd captcha timeout, proceeding...');
+          const solved = await solveMiCaptcha(page);
+          if (!solved) {
+            console.log('  >>> OCR failed, please solve manually...');
+            await waitForCaptchaSolved(page, 120000);
+          }
         }
       } catch (e) {
         console.log(`  Audio solver failed: ${e.message}`);
