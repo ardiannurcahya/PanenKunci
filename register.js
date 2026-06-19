@@ -29,6 +29,89 @@ async function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
+async function handleTermsAgreement(page) {
+  await sleep(2000);
+
+  // Check if terms agreement text is on the page
+  const termsIndicators = [
+    'I agree to use the model',
+    'Open Platform Agreement',
+    'Privacy Policy',
+    'terms and condition',
+    'Agree',
+  ];
+
+  let hasTerms = false;
+  for (const text of termsIndicators) {
+    const el = page.locator(`text="${text}"`).first();
+    if (await el.isVisible({ timeout: 500 }).catch(() => false)) {
+      hasTerms = true;
+      break;
+    }
+  }
+
+  if (!hasTerms) {
+    console.log('  No terms agreement detected, skipping...');
+    return;
+  }
+
+  console.log('  Terms agreement detected!');
+
+  // Check the agreement checkbox
+  const checkboxSelectors = [
+    'input[type="checkbox"]',
+    '[class*="checkbox"] input',
+    '[class*="agree"] input',
+    'input[name*="agree" i]',
+  ];
+  let checked = false;
+  for (const selector of checkboxSelectors) {
+    const cb = page.locator(selector).first();
+    if (await cb.isVisible({ timeout: 500 }).catch(() => false)) {
+      if (!(await cb.isChecked().catch(() => false))) {
+        await cb.check();
+      }
+      checked = true;
+      console.log('  Agreement checkbox: checked');
+      break;
+    }
+  }
+
+  // Fallback: click the label/text directly
+  if (!checked) {
+    const labelEl = page.locator('label:has-text("I agree"), label:has-text("Agree"), span:has-text("I agree")').first();
+    if (await labelEl.isVisible({ timeout: 500 }).catch(() => false)) {
+      await labelEl.click();
+      console.log('  Agreement label clicked');
+      checked = true;
+    }
+  }
+
+  await sleep(500);
+
+  // Click Confirm/Agree/Submit button
+  const confirmSelectors = [
+    'button:has-text("Confirm")',
+    'button:has-text("Agree")',
+    'button:has-text("Accept")',
+    'button:has-text("Submit")',
+    'button:has-text("Continue")',
+    'button:has-text("Next")',
+    'button[type="submit"]',
+  ];
+  for (const selector of confirmSelectors) {
+    const btn = page.locator(selector).first();
+    if (await btn.isVisible({ timeout: 500 }).catch(() => false)) {
+      await btn.click();
+      console.log('  Terms confirmed');
+      await sleep(2000);
+      return;
+    }
+  }
+
+  console.log('  [WARN] Confirm button not found, proceeding anyway...');
+}
+
 async function waitForCaptchaSolved(page, maxWaitMs = 120000) {
   const pollMs = 2000;
   const deadline = Date.now() + maxWaitMs;
@@ -67,7 +150,7 @@ async function waitForCaptchaSolved(page, maxWaitMs = 120000) {
 }
 
 async function register() {
-  console.log('[1/10] Launching browser...');
+  console.log('[1/11] Launching browser...');
   const browser = await chromium.launch({
     headless: false, // need visible browser for captcha
     args: ['--disable-blink-features=AutomationControlled'],
@@ -80,22 +163,22 @@ async function register() {
 
   try {
     // Step 1: Create temp email
-    console.log('[2/10] Creating temporary email...');
+    console.log('[2/11] Creating temporary email...');
     const tempmail = new TempMail();
     const inbox = await tempmail.createInbox();
     const email = inbox.address;
     console.log(`  Email: ${email}`);
 
     // Step 2: Navigate to registration page
-    console.log('[3/10] Navigating to registration page...');
+    console.log('[3/11] Navigating to registration page...');
     await page.goto(CONFIG.registerUrl, { waitUntil: 'networkidle', timeout: 30000 });
     await sleep(2000);
 
     // Step 3: Select region (skipped - auto-detected from _uRegion param)
-    console.log('[4/10] Region auto-detected (via URL param), skipping manual selection...');
+    console.log('[4/11] Region auto-detected (via URL param), skipping manual selection...');
 
     // Step 4: Fill email
-    console.log('[5/10] Filling registration form...');
+    console.log('[5/11] Filling registration form...');
     const emailInput = page.locator('input[type="text"]').first()
       .or(page.locator('input[name*="email" i], input[name*="account" i], input[placeholder*="email" i], input[placeholder*="Email" i], input[placeholder*="account" i], input[type="email"]').first());
     await emailInput.fill(email);
@@ -127,7 +210,7 @@ async function register() {
     console.log('  Screenshot saved: before_submit.png');
 
     // Step 5: Submit and handle captcha
-    console.log('[6/10] Submitting form (captcha may appear)...');
+    console.log('[6/11] Submitting form (captcha may appear)...');
     const submitBtn = page.locator('button[type="submit"], button:has-text("Register"), button:has-text("Next"), button:has-text("Create"), a:has-text("Register")').first();
     await submitBtn.click();
     await sleep(3000);
@@ -150,7 +233,7 @@ async function register() {
     }
 
     // Step 7: Wait for OTP email
-    console.log('[7/10] Waiting for OTP email...');
+    console.log('[7/11] Waiting for OTP email...');
     const otp = await tempmail.waitForOtp(email, CONFIG.otpTimeout, 5000);
 
     if (!otp) {
@@ -184,16 +267,25 @@ async function register() {
     // Submit OTP
     const otpSubmit = page.locator('button[type="submit"], button:has-text("Verify"), button:has-text("Submit"), button:has-text("Confirm")').first();
     await otpSubmit.click();
+    await sleep(3000);
 
-    // Step 8: Navigate to platform console
-    console.log('[8/10] Navigating to platform console...');
+    // Step 8: Handle terms & agreements after OTP
+    console.log('[8/11] Checking terms & agreements...');
+    await handleTermsAgreement(page);
+
+    // Step 9: Navigate to platform console
+    console.log('[9/11] Navigating to platform console...');
     await page.goto(CONFIG.consoleUrl, { waitUntil: 'networkidle', timeout: CONFIG.navigateTimeout });
     await sleep(3000);
+
+    // Check again for terms (might appear after redirect)
+    await handleTermsAgreement(page);
+
     await page.screenshot({ path: 'registered.png' });
     console.log('  Landed on platform console');
 
-    // Step 9: Create API Key
-    console.log('[9/10] Creating API Key...');
+    // Step 10: Create API Key
+    console.log('[10/11] Creating API Key...');
 
     // Try common API key page URLs
     const apiKeyPaths = ['/apikey', '/developer/apikey', '/settings/apikey', '/developer', '/keys', '/settings'];
@@ -325,7 +417,7 @@ async function register() {
     await page.screenshot({ path: 'api_key_created.png' });
 
     // Step 10: Extract and save the API key
-    console.log('[10/10] Extracting API Key...');
+    console.log('[11/11] Extracting API Key...');
     let apiKey = '';
 
     // Try to find the API key value on the page
