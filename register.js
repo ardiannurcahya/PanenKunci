@@ -139,6 +139,9 @@ async function solveMiCaptcha(page, retries = 3) {
       });
 
       const raw = completion.choices[0]?.message;
+      const fullResponse = JSON.stringify({ content: raw?.content, reasoning: raw?.reasoning_content }, null, 2);
+      console.log(`  === MiMo FULL RESPONSE ===\n${fullResponse}\n  === END ===`);
+
       let text = ((raw?.content || '') + ' ' + (raw?.reasoning_content || '')).trim();
 
       // Strip known MiMo prefix noise
