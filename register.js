@@ -63,24 +63,20 @@ async function handleCookies(page) {
 }
 
 async function handleTermsAgreement(page) {
-  await sleep(2000);
-
-  // Check if terms agreement text is on the page
-  const termsIndicators = [
-    'I agree to use the model',
-    'Open Platform Agreement',
-    'Privacy Policy',
-    'terms and condition',
-    'Agree',
-  ];
-
+  // Poll for terms page to fully load (max 15s)
+  const deadline = Date.now() + 15000;
   let hasTerms = false;
-  for (const text of termsIndicators) {
-    const el = page.locator(`text="${text}"`).first();
-    if (await el.isVisible({ timeout: 500 }).catch(() => false)) {
-      hasTerms = true;
-      break;
+
+  while (Date.now() < deadline) {
+    for (const text of ['I agree to use the model', 'Open Platform Agreement', 'Privacy Policy', 'terms and condition']) {
+      const el = page.locator(`text="${text}"`).first();
+      if (await el.isVisible({ timeout: 500 }).catch(() => false)) {
+        hasTerms = true;
+        break;
+      }
     }
+    if (hasTerms) break;
+    await sleep(1500);
   }
 
   if (!hasTerms) {
