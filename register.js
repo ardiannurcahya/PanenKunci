@@ -2,7 +2,6 @@ const { chromium } = require('playwright');
 const TempMail = require('./tempmail.js');
 const { solve: solveRecaptchaAudio } = require('recaptcha-solver');
 const { execSync } = require('child_process');
-const OpenAI = require('openai');
 
 function findFfmpeg() {
   // Check common paths
@@ -44,8 +43,6 @@ const CONFIG = {
   // Captcha mode: 'manual' | 'audio' | '2captcha'
   captchaMode: 'audio',
   captchaApiKey: '',
-  // MiMo API for custom captcha OCR
-  mimoApiKey: process.env.MIMO_API_KEY || 'sk-sctlniqfe7lhfm39qyvxr6zygtdvi2mjt4ax4cct0fgah77x',
 };
 
 async function sleep(ms) {
@@ -83,104 +80,6 @@ async function handleCookies(page) {
       return;
     }
   }
-}
-
-async function solveMiCaptcha(page, retries = 3) {
-  if (!CONFIG.mimoApiKey) {
-    console.log('  MIMO_API_KEY not set, falling back to manual...');
-    return false;
-  }
-
-  const client = new OpenAI({
-    apiKey: CONFIG.mimoApiKey,
-    baseURL: 'https://api.xiaomimimo.com/v1',
-  });
-
-  const img = page.locator('.mi-captcha-field__image, img[src*="getCode"], img[src*="icodeType"]').first();
-  const input = page.locator('.mi-captcha-field input, input[placeholder*="code" i], input[placeholder*="captcha" i], input[name*="icode"]').first();
-
-  for (let i = 0; i < retries; i++) {
-    console.log(`  MiMo OCR attempt ${i + 1}/${retries}...`);
-    await sleep(1000);
-
-    try {
-      const src = await img.getAttribute('src');
-      if (!src) { await sleep(1000); continue; }
-      const imgUrl = new URL(src, page.url()).href;
-
-      // Download captcha image with session cookies
-      const cookies = await page.context().cookies();
-      const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-      const resp = await fetch(imgUrl, { headers: { Cookie: cookieHeader } });
-      if (!resp.ok) { console.log(`  Fetch failed: ${resp.status}`); continue; }
-      const buffer = Buffer.from(await resp.arrayBuffer());
-      const base64 = buffer.toString('base64');
-      const mime = buffer[0] === 0xFF ? 'image/jpeg' : 'image/png';
-
-      const completion = await client.chat.completions.create({
-        model: 'mimo-v2.5',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image_url',
-                image_url: { url: `data:${mime};base64,${base64}` },
-              },
-              {
-                type: 'text',
-                text: 'Read the captcha alphanumeric code. Output ONLY the code, nothing else.',
-              },
-            ],
-          },
-        ],
-        max_completion_tokens: 200,
-        extra_body: { thinking: { type: 'disabled' } },
-      });
-
-      const raw = completion.choices[0]?.message;
-      const fullResponse = JSON.stringify({ content: raw?.content, reasoning: raw?.reasoning_content }, null, 2);
-      console.log(`  === MiMo FULL RESPONSE ===\n${fullResponse}\n  === END ===`);
-
-      let text = ((raw?.content || '') + ' ' + (raw?.reasoning_content || '')).trim();
-
-      // Strip known MiMo prefix noise
-      text = text.replace(/^.*?Thinking Process:?\s*/is, '');
-
-      // Find all alphanumeric words, take LAST one (4-8 chars, not a year)
-      const words = text.match(/[A-Za-z0-9]+/g) || [];
-      const skip = new Set(['thinking','process','analyze','request','user','identify','output','text','image','captcha','characters','appears','contains','shows','seems','looks','found','display','alphanumeric','code','characters','words','letters','numbers','follows','read','appear','first','second','third','fourth','fifth','each','following','these','those','theyre','theyve','there','their','what','where','which','while','would','could','should','about','above','after','again','being','below','could','doing','every','going','having','other','still','today','under','using','were','also','been','does','like','make','many','more','same','some','such','than','that','them','then','this','upon','very','well','when','with','your','just','only','from','over','into','take']);
-      const candidates = words.filter(w => w.length >= 4 && w.length <= 8 && !skip.has(w.toLowerCase()) && !/^\d{4}$/.test(w));
-      const code = candidates[candidates.length - 1] || '';
-
-      console.log(`  MiMo result: "${code}"`);
-
-      if (code.length >= 4 && code.length <= 8) {
-        await input.fill('');
-        await input.fill(code);
-        await sleep(500);
-
-        const submit = page.locator('button[type="submit"], button:has-text("Verify"), button:has-text("Confirm"), button:has-text("Submit")').first();
-        if (await submit.isVisible({ timeout: 500 }).catch(() => false)) {
-          await submit.click();
-          await sleep(2000);
-
-          if (!(await img.isVisible({ timeout: 1000 }).catch(() => false))) {
-            console.log('  Mi captcha solved!');
-            return true;
-          }
-          console.log('  Wrong, retrying...');
-        } else {
-          console.log('  Submit button not found, retrying...');
-        }
-      } else {
-        console.log('  Invalid code length, retrying...');
-      }
-    } catch (e) {
-      console.log(`  MiMo error: ${e.message}`);
-    }
-  }
-  return false;
 }
 
 async function handleTermsAgreement(page) {
@@ -505,17 +404,14 @@ async function register() {
         await solveRecaptchaAudio(page, { wait: 15000, retry: 5, ffmpeg: ffmpegPath });
         console.log('  reCAPTCHA solved via audio!');
 
-        // Check for Xiaomi custom 2nd captcha (text/image)
+        // Check for Xiaomi custom 2nd captcha (text/image) — skip, close browser
         await sleep(2000);
         const customImg = page.locator('.mi-captcha-field__image, img[src*="getCode"], img[src*="icodeType"]').first();
         if (await customImg.isVisible({ timeout: 2000 }).catch(() => false)) {
-          console.log('  >>> XIAOMI CUSTOM CAPTCHA DETECTED');
+          console.log('  >>> XIAOMI CUSTOM CAPTCHA DETECTED — closing browser');
           await page.screenshot({ path: 'custom_captcha.png' });
-          const solved = await solveMiCaptcha(page);
-          if (!solved) {
-            console.log('  >>> OCR failed, please solve manually...');
-            await waitForCaptchaSolved(page, 120000);
-          }
+          await browser.close();
+          process.exit(0);
         }
       } catch (e) {
         console.log(`  Audio solver failed: ${e.message}`);
