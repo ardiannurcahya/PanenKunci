@@ -307,16 +307,17 @@ async function register() {
 
     // Step 8: Wait for OAuth redirect chain to platform console
     console.log('[8/11] Waiting for OAuth redirect to platform console...');
-    await page.waitForURL(/platform\.xiaomimimo\.com\/console/, { timeout: 30000 }).catch(async () => {
+    await page.waitForURL(/platform\.xiaomimimo\.com\/console/, { timeout: 3000 }).catch(async () => {
       console.log('  Redirect not detected, navigating manually...');
       await page.goto(CONFIG.consoleUrl, { waitUntil: 'networkidle', timeout: CONFIG.navigateTimeout });
     });
-    await handleCookies(page);
-    await sleep(2000);
 
     // Step 9: Handle terms & agreements (appears after redirect)
     console.log('[9/11] Checking terms & agreements...');
     await handleTermsAgreement(page);
+
+    await handleCookies(page);
+    await sleep(2000);
 
     await page.screenshot({ path: 'registered.png' });
     console.log('  Landed on platform console');
@@ -524,7 +525,7 @@ async function register() {
     console.log(`  Saved to:   ${CONFIG.outputFile}`);
     console.log('========================================\n');
     console.log('Browser will close in 30 seconds...');
-    await sleep(30000);
+    await sleep(5000);
 
   } catch (err) {
     console.error('ERROR:', err.message);
