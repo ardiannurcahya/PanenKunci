@@ -12,7 +12,7 @@ const CONFIG = {
   // API key name
   apiKeyName: 'auto-' + Date.now().toString(36),
   // Output file for API key
-  outputFile: path.join(__dirname, 'test.txt'),
+  outputFile: path.join(__dirname, 'keys.csv'),
   // User config
   password: 'PortoAuto2025!',
   region: 'Indonesia',
@@ -496,18 +496,23 @@ async function register() {
       } catch (_) {}
     }
 
-    // Save to file
-    const outputData = [
-      `# Auto Register - Generated ${new Date().toISOString()}`,
-      `Email: ${email}`,
-      `Password: ${CONFIG.password}`,
-      `API Key Name: ${CONFIG.apiKeyName}`,
-      `API Key: ${apiKey || 'NOT FOUND - check screenshot api_key_created.png'}`,
-      '',
-    ].join('\n');
+    // Save to CSV
+    const csvHeaders = 'timestamp,email,password,api_key_name,api_key';
+    const csvRow = [
+      new Date().toISOString(),
+      email,
+      CONFIG.password,
+      CONFIG.apiKeyName,
+      apiKey || 'NOT_FOUND',
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
 
-    fs.appendFileSync(CONFIG.outputFile, outputData + '\n', 'utf8');
-    console.log(`  Saved to: ${CONFIG.outputFile}`);
+    const csvPath = CONFIG.outputFile;
+    const exists = fs.existsSync(csvPath);
+    if (!exists) {
+      fs.writeFileSync(csvPath, csvHeaders + '\n', 'utf8');
+    }
+    fs.appendFileSync(csvPath, csvRow + '\n', 'utf8');
+    console.log(`  Saved to: ${csvPath}`);
 
     console.log('\n========================================');
     console.log('  REGISTRATION SUMMARY');

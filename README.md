@@ -47,7 +47,7 @@ const CONFIG = {
   password: 'PortoAuto2025!',    // account password
   region: 'Indonesia',           // region (auto-detected from URL)
   apiKeyName: 'auto-xxx',        // API key name prefix
-  outputFile: 'test.txt',        // API key output file
+  outputFile: 'keys.csv',        // CSV output file
   captchaMode: 'manual',         // 'manual' | '2captcha'
   captchaApiKey: '',             // fill in if using 2captcha
 };
@@ -67,18 +67,15 @@ const CONFIG = {
 | 8 | Terms & agreements (checklist + confirm) |
 | 9 | Redirect to console + accept cookies |
 | 10 | Navigate to API Keys → Create API Key |
-| 11 | Extract API key → save to `test.txt` |
+| 11 | Extract API key → save to `keys.csv` |
 
 ## Output
 
-Format in `test.txt` (append, not overwrite):
+CSV format in `keys.csv` (auto-creates headers on first run, appends rows):
 
-```
-# Auto Register - Generated 2026-06-19T...
-Email: user_xxx@domain.com
-Password: PortoAuto2025!
-API Key Name: auto-xxx
-API Key: sk-xxxxxxxxxxxxxxxxx
+```csv
+timestamp,email,password,api_key_name,api_key
+"2026-06-19T12:00:00.000Z","user_xxx@domain.com","PortoAuto2025!","auto-xxx","sk-xxxxxxxxxxxxxxxxx"
 ```
 
 ## File Structure
@@ -88,7 +85,7 @@ API Key: sk-xxxxxxxxxxxxxxxxx
 | `register.js` | Main bot (Playwright) |
 | `tempmail.js` | Temp email + OTP extractor (Node) |
 | `tempmail.py` | Temp email + OTP extractor (Python) |
-| `test.txt` | API key output (gitignored) |
+| `keys.csv` | API key output (gitignored) |
 | `*.png` | Debug screenshots (gitignored) |
 
 ## Screenshots

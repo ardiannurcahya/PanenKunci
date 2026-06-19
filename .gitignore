@@ -1,5 +1,6 @@
 node_modules/
 *.png
 test.txt
+keys.csv
 *.log
 .env
