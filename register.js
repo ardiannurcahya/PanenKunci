@@ -164,20 +164,21 @@ async function waitForCaptchaSolved(page, maxWaitMs = 180000) {
       return true;
     }
 
-    // Signal 3: Known captcha iframe appeared then disappeared
-    const captchaFrame = page.locator('iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[src*="captcha"]');
-    const captchaVisible = await captchaFrame.isVisible({ timeout: 500 }).catch(() => false);
-    if (captchaVisible) {
-      // Captcha is on screen — wait for it to disappear
-      const captchaDeadline = Date.now() + 120000;
-      while (Date.now() < captchaDeadline) {
-        if (!(await captchaFrame.isVisible({ timeout: 500 }).catch(() => false))) {
-          await sleep(1000);
-          return true;
-        }
-        await sleep(pollMs);
+    // Signal 3: reCAPTCHA token filled (invisible textarea)
+    try {
+      const token = await page.$eval('#g-recaptcha-response', el => el.value);
+      if (token && token.length > 0) {
+        // reCAPTCHA solved — form might auto-submit, wait a moment
+        await sleep(1000);
+        return true;
       }
-      return false; // Captcha didn't disappear within timeout
+    } catch (_) {}
+
+    // Signal 4: reCAPTCHA checkbox checked (aria-checked)
+    const recaptchaChecked = page.locator('.recaptcha-checked, #recaptcha-anchor[aria-checked="true"], .recaptcha-checkbox-checked');
+    if (await recaptchaChecked.isVisible({ timeout: 500 }).catch(() => false)) {
+      await sleep(1000);
+      return true;
     }
 
     await sleep(pollMs);
