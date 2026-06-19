@@ -1,6 +1,25 @@
 const { chromium } = require('playwright');
 const TempMail = require('./tempmail.js');
 const { solve: solveRecaptchaAudio } = require('recaptcha-solver');
+const { execSync } = require('child_process');
+
+function findFfmpeg() {
+  // Check common paths
+  const paths = [
+    'C:\\Users\\ardia\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.1.1-full_build\\bin\\ffmpeg.exe',
+    'ffmpeg',
+  ];
+  for (const p of paths) {
+    try {
+      execSync(`"${p}" -version`, { stdio: 'ignore' });
+      return p;
+    } catch (_) {}
+  }
+  return 'ffmpeg'; // fallback
+}
+
+const ffmpegPath = findFfmpeg();
+console.log(`  ffmpeg: ${ffmpegPath}`);
 
 const fs = require('fs');
 const path = require('path');
@@ -22,7 +41,7 @@ const CONFIG = {
   otpTimeout: 180000,
   navigateTimeout: 30000,
   // Captcha mode: 'manual' | 'audio' | '2captcha'
-  captchaMode: 'manual',
+  captchaMode: 'audio',
   captchaApiKey: '',
 };
 
@@ -370,7 +389,7 @@ async function register() {
 
       try {
         process.env.VERBOSE = '1';
-        await solveRecaptchaAudio(page, { wait: 10000, retry: 3 });
+        await solveRecaptchaAudio(page, { wait: 10000, retry: 3, ffmpeg: ffmpegPath });
         console.log('  Captcha solved via audio!');
       } catch (e) {
         console.log(`  Audio solver failed: ${e.message}`);
