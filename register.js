@@ -141,6 +141,108 @@ async function handleTermsAgreement(page) {
   console.log('  [WARN] Confirm button not found, proceeding anyway...');
 }
 
+async function solveRecaptchaWith2captcha(page, apiKey) {
+  let siteKey = null;
+
+  // Try data-sitekey attribute
+  try {
+    siteKey = await page.$eval('[data-sitekey]', el => el.getAttribute('data-sitekey'));
+  } catch (_) {}
+
+  // Fallback: find in script tags
+  if (!siteKey) {
+    try {
+      siteKey = await page.$eval('script', s => {
+        const m = s.textContent.match(/'sitekey'\s*:\s*'([^']+)'/);
+        return m ? m[1] : null;
+      });
+    } catch (_) {}
+  }
+
+  // Fallback: search all scripts
+  if (!siteKey) {
+    try {
+      const scripts = await page.$$eval('script', els =>
+        els.map(e => e.textContent).join('\n')
+      );
+      const m = scripts.match(/['"]sitekey['"]\s*:\s*['"]([^'"]+)['"]/);
+      if (m) siteKey = m[1];
+    } catch (_) {}
+  }
+
+  if (!siteKey) {
+    console.log('  [WARN] Could not find reCAPTCHA sitekey');
+    return false;
+  }
+
+  const pageUrl = page.url();
+  console.log(`  Sending to 2captcha... (sitekey: ${siteKey.slice(0, 20)}...)`);
+
+  // Create task
+  const createResp = await fetch('https://api.2captcha.com/createTask', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      clientKey: apiKey,
+      task: {
+        type: 'RecaptchaV2TaskProxyless',
+        websiteURL: pageUrl,
+        websiteKey: siteKey,
+      },
+    }),
+  });
+  const createData = await createResp.json();
+
+  if (createData.errorId !== 0) {
+    console.log(`  2captcha error: ${createData.errorDescription}`);
+    return false;
+  }
+
+  const taskId = createData.taskId;
+  console.log(`  Task created: ${taskId}, waiting for solution...`);
+
+  // Poll for result
+  const deadline = Date.now() + 120000;
+  while (Date.now() < deadline) {
+    await sleep(3000);
+    const resultResp = await fetch('https://api.2captcha.com/getTaskResult', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientKey: apiKey, taskId }),
+    });
+    const resultData = await resultResp.json();
+
+    if (resultData.status === 'ready') {
+      const token = resultData.solution.gRecaptchaResponse;
+      console.log('  2captcha solved!');
+
+      // Inject token into page
+      await page.$eval('#g-recaptcha-response', (el, tk) => { el.value = tk; }, token);
+      await page.$eval('#g-recaptcha-response', (el, tk) => {
+        el.value = tk;
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        // Trigger recaptcha callback
+        if (typeof ___grecaptcha_cfg !== 'undefined' && ___grecaptcha_cfg.clients) {
+          for (const key of Object.keys(___grecaptcha_cfg.clients)) {
+            const client = ___grecaptcha_cfg.clients[key];
+            const callback = client.W && client.W.callback;
+            if (callback) callback(tk);
+          }
+        }
+      }, token);
+      await sleep(1000);
+      return true;
+    }
+
+    if (resultData.errorId !== 0) {
+      console.log(`  2captcha error: ${resultData.errorDescription}`);
+      return false;
+    }
+  }
+
+  console.log('  2captcha timeout');
+  return false;
+}
 async function waitForCaptchaSolved(page, maxWaitMs = 180000) {
   const pollMs = 2000;
   const deadline = Date.now() + maxWaitMs;
@@ -254,20 +356,18 @@ async function register() {
     await sleep(3000);
 
     // Handle captcha
-    if (CONFIG.captchaMode === 'manual') {
+    if (CONFIG.captchaMode === '2captcha' && CONFIG.captchaApiKey) {
+      console.log('  Auto-solving captcha with 2captcha...');
+      await solveRecaptchaWith2captcha(page, CONFIG.captchaApiKey);
+    } else {
       console.log('  >>> CAPTCHA: Please solve the captcha manually in the browser.');
       console.log('  >>> Auto-detecting when solved...');
-
-      // Poll until captcha is solved (max 120s)
       const captchaSolved = await waitForCaptchaSolved(page, 120000);
       if (captchaSolved) {
         console.log('  Captcha solved! Continuing...');
       } else {
         console.log('  [WARN] Captcha detection timeout, proceeding anyway...');
       }
-    } else {
-      // 2captcha logic (placeholder)
-      console.log('  Captcha auto-solve not implemented');
     }
 
     // Step 7: Wait for OTP email
