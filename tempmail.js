@@ -54,10 +54,17 @@ class TempMail {
     async createInbox(desiredLocal = null, domain = null) {
         if (!domain) {
             const activeDomains = await this.getDomains(false);
-            if (activeDomains.length === 0) {
-                throw new Error("No active domains found");
+            const targetDomains = ['openfile.my.id', 'neorastorepl.my.id', 'moymoy.me'];
+            const filteredDomains = activeDomains.filter(d => targetDomains.includes(d.domain));
+            
+            if (filteredDomains.length === 0) {
+                if (activeDomains.length === 0) {
+                    throw new Error("No active domains found");
+                }
+                domain = activeDomains[0].domain;
+            } else {
+                domain = filteredDomains[Math.floor(Math.random() * filteredDomains.length)].domain;
             }
-            domain = activeDomains[0].domain;
         }
 
         if (!desiredLocal) {

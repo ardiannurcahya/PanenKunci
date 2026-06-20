@@ -178,16 +178,62 @@ async function solvePuzzleCaptchaWithPython(page) {
       return false;
     }
 
-    // Scale targetX: OpenCV position is in image pixels, slider needs screen pixels
+    // Scale targetX from OpenCV image pixels to displayed background pixels
     const bgBox = await bgEl.boundingBox();
-    if (bgBox) {
-      const naturalWidth = await bgEl.evaluate(el => el.naturalWidth).catch(() => 0);
-      if (naturalWidth > 0 && naturalWidth !== bgBox.width) {
-        const scale = bgBox.width / naturalWidth;
-        console.log(`  Scaling: image ${naturalWidth}px → displayed ${Math.round(bgBox.width)}px (scale: ${scale.toFixed(2)})`);
-        targetX = Math.round(targetX * scale);
-      }
+    if (!bgBox) return false;
+
+    const naturalWidth = await bgEl.evaluate(el => el.naturalWidth).catch(() => 0);
+    let displayedTargetX = targetX;
+    if (naturalWidth > 0 && naturalWidth !== bgBox.width) {
+      const imgScale = bgBox.width / naturalWidth;
+      displayedTargetX = targetX * imgScale;
     }
+
+    // Now calculate track-to-piece scaling:
+    const sliderBox = await slider.boundingBox();
+    if (!sliderBox) return false;
+
+    // Get slider track box (parent of the slider button)
+    const track = slider.locator('..');
+    const trackBox = await track.boundingBox().catch(() => null);
+    const trackWidth = trackBox ? trackBox.width : bgBox.width;
+
+    // Get puzzle piece box
+    const puzzleEl = page.locator('#aliyunCaptcha-puzzle').first();
+    const puzzleBox = await puzzleEl.boundingBox().catch(() => null);
+    const puzzleWidth = puzzleBox ? puzzleBox.width : 50; // fallback to 50px
+
+    // Calculate initial screen offset of puzzle piece relative to background image
+    let initialOffset = 0;
+    if (puzzleBox && bgBox) {
+      initialOffset = Math.max(0, puzzleBox.x - bgBox.x);
+    }
+
+    const L_slider = trackWidth - sliderBox.width;
+    // Puzzle piece travel range is background width minus puzzle width minus starting offset
+    const L_piece = bgBox.width - puzzleWidth - initialOffset;
+
+    let scaleFactor = 1.0;
+    if (L_piece > 0 && L_slider > 0) {
+      scaleFactor = L_slider / L_piece;
+    }
+
+    // Net travel distance needed for the puzzle piece on the screen:
+    const travelNeeded = Math.max(0, displayedTargetX - initialOffset);
+
+    // The final drag distance in screen pixels is:
+    let dragDistance = travelNeeded * scaleFactor;
+
+    console.log(`  OpenCV offset: ${targetX}px`);
+    console.log(`  Displayed offset: ${Math.round(displayedTargetX)}px`);
+    console.log(`  Initial screen offset: ${initialOffset.toFixed(1)}px`);
+    console.log(`  Net travel needed: ${Math.round(travelNeeded)}px`);
+    console.log(`  Track width: ${Math.round(trackWidth)}px, Slider button: ${Math.round(sliderBox.width)}px (L_slider: ${Math.round(L_slider)}px)`);
+    console.log(`  Background: ${Math.round(bgBox.width)}px, Puzzle piece: ${Math.round(puzzleWidth)}px (L_piece: ${Math.round(L_piece)}px)`);
+    console.log(`  Track-to-Piece Scale: ${scaleFactor.toFixed(3)}`);
+    console.log(`  Final Drag Distance: ${Math.round(dragDistance)}px`);
+
+    targetX = Math.round(dragDistance);
 
     // Validate: position must be reasonable (at least 20px, max 500px)
     if (targetX < 20 || targetX > 500) {
@@ -195,11 +241,8 @@ async function solvePuzzleCaptchaWithPython(page) {
       return false;
     }
 
-    const box = await slider.boundingBox();
-    if (!box) return false;
-
-    const startX = box.x + box.width / 2;
-    const startY = box.y + box.height / 2;
+    const startX = sliderBox.x + sliderBox.width / 2;
+    const startY = sliderBox.y + sliderBox.height / 2;
     const endX = startX + targetX;
 
     console.log(`  Dragging from ${Math.round(startX)} to ${Math.round(endX)} (${targetX}px)...`);
