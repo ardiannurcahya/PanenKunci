@@ -4,28 +4,15 @@ chromium.use(StealthPlugin);
 
 const TempMail = require('./tempmail.js');
 const { solve: solveRecaptchaAudio } = require('recaptcha-solver');
-const { execSync, spawnSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
-function findFfmpeg() {
-  // Check common paths
-  const paths = [
-    'C:\\Users\\ardia\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.1.1-full_build\\bin\\ffmpeg.exe',
-    'ffmpeg',
-  ];
-  for (const p of paths) {
-    try {
-      execSync(`"${p}" -version`, { stdio: 'ignore' });
-      return p;
-    } catch (_) {}
-  }
-  return 'ffmpeg'; // fallback
-}
+const { findFfmpeg } = require('./utils/ffmpeg.js');
+const { sleep, rand, typeHuman, handleCookies } = require('./utils/helpers.js');
+const { solveCaptchaWithPython, solveRecaptchaWith2captcha, waitForCaptchaSolved } = require('./utils/captcha.js');
 
 const ffmpegPath = findFfmpeg();
 console.log(`  ffmpeg: ${ffmpegPath}`);
-
-const fs = require('fs');
-const path = require('path');
 
 const CONFIG = {
   // Landing page (referral link)
@@ -52,23 +39,7 @@ const CONFIG = {
   proxy: process.env.PROXY || '',
 };
 
-async function sleep(ms) {
-  return new Promise(r => setTimeout(r, ms));
-}
-
-function rand(min, max) {
-  return Math.floor(min + Math.random() * (max - min));
-}
-
-async function typeHuman(page, selector, text) {
-  const el = page.locator(selector).first();
-  await el.click();
-  await sleep(rand(200, 500));
-  for (const char of text) {
-    await el.press(char);
-    await sleep(rand(60, 180));
-  }
-}
+// sleep, rand, and typeHuman functions are now imported from ./utils/helpers.js
 
 // Pre-built list of free HTTP proxies (auto-refreshed occasionally)
 const FREE_PROXIES = [
@@ -81,92 +52,7 @@ async function getRandomProxy() {
   return FREE_PROXIES[Math.floor(Math.random() * FREE_PROXIES.length)];
 }
 
-async function solveCaptchaWithPython(imgLocator, page, retries = 3) {
-  const tmpDir = require('os').tmpdir();
-  const imgPath = path.join(tmpDir, `captcha_${Date.now()}.png`);
-
-  for (let i = 0; i < retries; i++) {
-    console.log(`  OCR attempt ${i + 1}/${retries}...`);
-    await sleep(1000);
-
-    try {
-      // Screenshot the captcha image element
-      await imgLocator.screenshot({ path: imgPath });
-
-      // Run Python OCR
-      const result = spawnSync('python', [path.join(__dirname, 'captcha_ocr.py'), imgPath], {
-        encoding: 'utf-8',
-        timeout: 30000,
-      });
-
-      if (result.error) {
-        console.log(`  Python error: ${result.error.message}`);
-        continue;
-      }
-
-      const code = (result.stdout || '').trim().replace(/[^a-zA-Z0-9]/g, '');
-      console.log(`  OCR result: "${code}"`);
-
-      if (code.length >= 4 && code.length <= 8) {
-        const input = page.locator('.mi-captcha-field input, input[name*="icode"]').first();
-        await input.fill('');
-        await input.fill(code);
-        await sleep(500);
-
-        const submit = page.locator('button[type="submit"], button:has-text("Verify"), button:has-text("Confirm")').first();
-        if (await submit.isVisible({ timeout: 500 }).catch(() => false)) {
-          await submit.click();
-          await sleep(2000);
-
-          if (!(await imgLocator.isVisible({ timeout: 1000 }).catch(() => false))) {
-            return true;
-          }
-          console.log('  Wrong, retrying...');
-        }
-      } else {
-        console.log('  Invalid code length, retrying...');
-      }
-    } catch (e) {
-      console.log(`  OCR error: ${e.message}`);
-    } finally {
-      try { fs.unlinkSync(imgPath); } catch (_) {}
-    }
-  }
-  return false;
-}
-
-async function handleCookies(page) {
-  await sleep(1500);
-
-  const buttonSelectors = [
-    'button:has-text("Accept all")',
-    'button:has-text("Accept All")',
-    'button:has-text("Accept all cookies")',
-    'button:has-text("Allow all")',
-    'button:has-text("Allow All")',
-    'button:has-text("I agree")',
-    'button:has-text("Agree")',
-    'button:has-text("OK")',
-    'button:has-text("Accept")',
-    'button:has-text("Got it")',
-    'a:has-text("Accept all")',
-    '[class*="cookie"] button:has-text("Accept")',
-    '[class*="cookie"] button:has-text("OK")',
-    '[aria-label*="cookies"] button',
-    '#onetrust-accept-btn-handler',
-    '.cookie-accept',
-  ];
-
-  for (const selector of buttonSelectors) {
-    const btn = page.locator(selector).first();
-    if (await btn.isVisible({ timeout: 300 }).catch(() => false)) {
-      await btn.click();
-      console.log('  Cookies accepted');
-      await sleep(500);
-      return;
-    }
-  }
-}
+// solveCaptchaWithPython and handleCookies functions are now imported from ./utils/captcha.js and ./utils/helpers.js
 
 async function handleTermsAgreement(page) {
   // Poll for terms page to fully load (max 15s)
@@ -247,152 +133,7 @@ async function handleTermsAgreement(page) {
   console.log('  [WARN] Confirm button not found, proceeding anyway...');
 }
 
-async function solveRecaptchaWith2captcha(page, apiKey) {
-  let siteKey = null;
-
-  // Try data-sitekey attribute
-  try {
-    siteKey = await page.$eval('[data-sitekey]', el => el.getAttribute('data-sitekey'));
-  } catch (_) {}
-
-  // Fallback: find in script tags
-  if (!siteKey) {
-    try {
-      siteKey = await page.$eval('script', s => {
-        const m = s.textContent.match(/'sitekey'\s*:\s*'([^']+)'/);
-        return m ? m[1] : null;
-      });
-    } catch (_) {}
-  }
-
-  // Fallback: search all scripts
-  if (!siteKey) {
-    try {
-      const scripts = await page.$$eval('script', els =>
-        els.map(e => e.textContent).join('\n')
-      );
-      const m = scripts.match(/['"]sitekey['"]\s*:\s*['"]([^'"]+)['"]/);
-      if (m) siteKey = m[1];
-    } catch (_) {}
-  }
-
-  if (!siteKey) {
-    console.log('  [WARN] Could not find reCAPTCHA sitekey');
-    return false;
-  }
-
-  const pageUrl = page.url();
-  console.log(`  Sending to 2captcha... (sitekey: ${siteKey.slice(0, 20)}...)`);
-
-  // Create task
-  const createResp = await fetch('https://api.2captcha.com/createTask', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      clientKey: apiKey,
-      task: {
-        type: 'RecaptchaV2TaskProxyless',
-        websiteURL: pageUrl,
-        websiteKey: siteKey,
-      },
-    }),
-  });
-  const createData = await createResp.json();
-
-  if (createData.errorId !== 0) {
-    console.log(`  2captcha error: ${createData.errorDescription}`);
-    return false;
-  }
-
-  const taskId = createData.taskId;
-  console.log(`  Task created: ${taskId}, waiting for solution...`);
-
-  // Poll for result
-  const deadline = Date.now() + 120000;
-  while (Date.now() < deadline) {
-    await sleep(3000);
-    const resultResp = await fetch('https://api.2captcha.com/getTaskResult', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientKey: apiKey, taskId }),
-    });
-    const resultData = await resultResp.json();
-
-    if (resultData.status === 'ready') {
-      const token = resultData.solution.gRecaptchaResponse;
-      console.log('  2captcha solved!');
-
-      // Inject token into page
-      await page.$eval('#g-recaptcha-response', (el, tk) => { el.value = tk; }, token);
-      await page.$eval('#g-recaptcha-response', (el, tk) => {
-        el.value = tk;
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        // Trigger recaptcha callback
-        if (typeof ___grecaptcha_cfg !== 'undefined' && ___grecaptcha_cfg.clients) {
-          for (const key of Object.keys(___grecaptcha_cfg.clients)) {
-            const client = ___grecaptcha_cfg.clients[key];
-            const callback = client.W && client.W.callback;
-            if (callback) callback(tk);
-          }
-        }
-      }, token);
-      await sleep(1000);
-      return true;
-    }
-
-    if (resultData.errorId !== 0) {
-      console.log(`  2captcha error: ${resultData.errorDescription}`);
-      return false;
-    }
-  }
-
-  console.log('  2captcha timeout');
-  return false;
-}
-async function waitForCaptchaSolved(page, maxWaitMs = 180000) {
-  const pollMs = 2000;
-  const deadline = Date.now() + maxWaitMs;
-  const startUrl = page.url();
-
-  // Wait a moment for captcha to fully load before checking
-  await sleep(3000);
-
-  while (Date.now() < deadline) {
-    // Signal 1: URL changed (most reliable — form actually submitted)
-    const currentUrl = page.url();
-    if (currentUrl !== startUrl) {
-      await sleep(500);
-      return true;
-    }
-
-    // Signal 2: OTP / verification input appeared on current page
-    const otpField = page.locator('input[maxlength="6"], input[maxlength="4"], input[placeholder*="code" i], input[placeholder*="OTP" i], input[placeholder*="verif" i]');
-    if (await otpField.isVisible({ timeout: 500 }).catch(() => false)) {
-      await sleep(500);
-      return true;
-    }
-
-    // Signal 3: reCAPTCHA token filled (invisible textarea)
-    try {
-      const token = await page.$eval('#g-recaptcha-response', el => el.value);
-      if (token && token.length > 0) {
-        // reCAPTCHA solved — form might auto-submit, wait a moment
-        await sleep(1000);
-        return true;
-      }
-    } catch (_) {}
-
-    // Signal 4: reCAPTCHA checkbox checked (aria-checked)
-    const recaptchaChecked = page.locator('.recaptcha-checked, #recaptcha-anchor[aria-checked="true"], .recaptcha-checkbox-checked');
-    if (await recaptchaChecked.isVisible({ timeout: 500 }).catch(() => false)) {
-      await sleep(1000);
-      return true;
-    }
-
-    await sleep(pollMs);
-  }
-  return false;
-}
+// solveRecaptchaWith2captcha and waitForCaptchaSolved functions are now imported from ./utils/captcha.js
 
 async function register() {
   console.log('[1/11] Launching browser...');
