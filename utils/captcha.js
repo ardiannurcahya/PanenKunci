@@ -4,7 +4,7 @@ const { spawnSync } = require('child_process');
 const { sleep, rand, fillHuman, humanMouseMove } = require('./helpers');
 
 // Xiaomi text-image captcha solver (using captcha_ocr.py)
-async function solveCaptchaWithPython(imgLocator, page, retries = 3) {
+async function solveCaptchaWithPython(imgLocator, page, retries = 10) {
   const tmpDir = require('os').tmpdir();
   const imgPath = path.join(tmpDir, `captcha_${Date.now()}.png`);
 
@@ -221,8 +221,28 @@ async function solvePuzzleCaptchaWithPython(page) {
     // Net travel distance needed for the puzzle piece on the screen:
     const travelNeeded = Math.max(0, displayedTargetX - initialOffset);
 
+    // Check if it is Aliyun Captcha
+    const isAliyun = await page.locator('#aliyunCaptcha-puzzle').first().isVisible().catch(() => false);
+
     // The final drag distance in screen pixels is:
-    let dragDistance = travelNeeded * scaleFactor;
+    let dragDistance;
+    if (isAliyun) {
+      // Aliyun Captcha maps slider position s to puzzle position p by subtracting a parabolic offset:
+      // p = s - offset(s), where offset(s) = (12/13) * s * (1 - s / L_slider)
+      // This expands to the quadratic form: p = (12/13)*s^2 + (1/13)*s
+      // Solving for s given p (travelNeeded) analytically gives: s = L_slider/24 * (sqrt(1 + 624 * (p/L_piece)) - 1)
+      const ratio = Math.max(0, Math.min(1, travelNeeded / L_piece));
+      dragDistance = (L_slider / 24) * (Math.sqrt(1 + 624 * ratio) - 1);
+
+      // >>> DISESUAIKAN MANUAL DI SINI <<<
+      // Ubah angka 1.0 di bawah (misal menjadi 1.02 untuk menambah atau 0.98 untuk mengurangi) jika ingin menyetel sensitivitas geseran secara manual.
+      const manualMultiplier = 1.3;
+      dragDistance = dragDistance * manualMultiplier;
+
+      console.log(`  [Aliyun Captcha] Applying non-linear curve. Target ratio: ${ratio.toFixed(3)}, Drag ratio: ${(dragDistance / L_slider).toFixed(3)}`);
+    } else {
+      dragDistance = travelNeeded * scaleFactor;
+    }
 
     console.log(`  OpenCV offset: ${targetX}px`);
     console.log(`  Displayed offset: ${Math.round(displayedTargetX)}px`);
@@ -247,27 +267,70 @@ async function solvePuzzleCaptchaWithPython(page) {
 
     console.log(`  Dragging from ${Math.round(startX)} to ${Math.round(endX)} (${targetX}px)...`);
 
-    // Human-like drag with ease-out
-    const steps = rand(30, 50);
-    await page.mouse.move(startX, startY);
-    await sleep(rand(100, 300));
-    await page.mouse.down();
-    await sleep(rand(50, 150));
+    // Human-like drag with overshoot and correction
+    const targetMove = targetX;
+    const overshoot = targetMove > 100 ? rand(3, 8) : 0;
 
-    for (let i = 1; i <= steps; i++) {
-      const progress = i / steps;
-      const eased = 1 - Math.pow(1 - progress, 3);
-      const x = startX + (endX - startX) * eased;
-      const y = startY + (Math.random() - 0.5) * 2;
+    await page.mouse.move(startX, startY);
+    await sleep(rand(150, 300));
+    await page.mouse.down();
+    await sleep(rand(100, 200));
+
+    // Phase 1: Drag past the target (overshoot)
+    const steps1 = rand(25, 35);
+    for (let i = 1; i <= steps1; i++) {
+      const progress = i / steps1;
+      const eased = 1 - Math.pow(1 - progress, 3); // cubic ease-out
+      const x = startX + (targetMove + overshoot) * eased;
+      const y = startY + (Math.random() - 0.5) * 3;
       await page.mouse.move(x, y);
-      await sleep(rand(5, 20));
+      await sleep(rand(8, 22));
     }
 
-    await sleep(rand(100, 300));
-    await page.mouse.up();
-    await sleep(2000);
+    await sleep(rand(150, 300)); // Pause at overshoot position
 
-    console.log('  Puzzle drag completed');
+    // Phase 2: Correct back to the exact target
+    if (overshoot > 0) {
+      const steps2 = rand(8, 15);
+      const startOvershootX = startX + targetMove + overshoot;
+      for (let i = 1; i <= steps2; i++) {
+        const progress = i / steps2;
+        // Linear move back to target
+        const x = startOvershootX - overshoot * progress;
+        const y = startY + (Math.random() - 0.5) * 1.5;
+        await page.mouse.move(x, y);
+        await sleep(rand(10, 25));
+      }
+      await sleep(rand(150, 300)); // Pause at final corrected position
+    }
+    await page.mouse.up();
+    await sleep(2000); // Wait for Aliyun backend verification/animation to settle
+
+    // Wait for captcha to disappear or OTP input to appear (up to 5s)
+    let verified = false;
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const windowVisible = await page.locator('#aliyunCaptcha-window-float').first().isVisible().catch(() => false);
+      if (!windowVisible) {
+        verified = true;
+        break;
+      }
+      
+      const otpField = page.locator('input.ant-otp-input, input[aria-label*="OTP"]').first();
+      if (await otpField.isVisible().catch(() => false)) {
+        verified = true;
+        break;
+      }
+      
+      await sleep(500);
+    }
+
+    if (!verified) {
+      console.log('  [WARN] Captcha window is still visible and no OTP field appeared. Solve failed!');
+      return false;
+    }
+
+    console.log('  Puzzle drag completed and verified successful');
     return true;
 
   } catch (e) {

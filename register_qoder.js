@@ -483,7 +483,34 @@ async function registerOnce(dashPage, context, runIndex) {
       try { await humanMouseMove(oauthPage); } catch (_) {}
     }, rand(3000, 6000));
 
-    const otp = await tempmail.waitForOtp(email, CONFIG.otpTimeout, 3000);
+    // Try polling for 45s first
+    let otp = await tempmail.waitForOtp(email, 45000, 3000);
+
+    if (!otp) {
+      console.log('  OTP not received in first 45 seconds. Looking for Resend button...');
+      await snap(oauthPage, `${runIndex}_08_otp_not_received_resending`);
+
+      const resendClicked = await clickFirst(oauthPage, [
+        'button:has-text("Resend")',
+        'a:has-text("Resend")',
+        'button:has-text("resend")',
+        'button:has-text("Send again")',
+        'span:has-text("Resend")',
+        'text="Resend"',
+        'text="Resend code"',
+        'text="Send code again"',
+      ], 'Resend code button', 5000);
+
+      if (resendClicked) {
+        console.log('  Resend button clicked successfully! Waiting for OTP again (up to 90 seconds)...');
+        await sleep(2000);
+        otp = await tempmail.waitForOtp(email, 90000, 3000);
+      } else {
+        console.log('  Resend button not found or not visible. Continuing to poll for another 90 seconds...');
+        otp = await tempmail.waitForOtp(email, 90000, 3000);
+      }
+    }
+
     clearInterval(mouseInterval);
 
     if (!otp) {
