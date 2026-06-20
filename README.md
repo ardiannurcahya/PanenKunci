@@ -4,10 +4,10 @@ Multi-platform automated account registration bot using Playwright + temporary e
 
 ## Supported Platforms
 
-| Platform | Script | Command |
-|----------|--------|---------|
-| [Xiaomi MiMo API](https://platform.xiaomimimo.com) | `register.js` | `npm run register` |
-| [Qoder](https://qoder.com) (via llm-agent-trade) | `register_qoder.js` | `npm run qoder` |
+| Platform                                        | Script                | Command              |
+| ----------------------------------------------- | --------------------- | -------------------- |
+| [Xiaomi MiMo API](https://platform.xiaomimimo.com) | `register.js`       | `npm run register` |
+| [Qoder](https://qoder.com) (via llm-agent-trade)   | `register_qoder.js` | `npm run qoder`    |
 
 ## Features
 
@@ -73,9 +73,9 @@ Edit the `CONFIG` section in `register_qoder.js`:
 ```js
 const CONFIG = {
   // URLs & passwords from .env
-  platformUrl: process.env.PLATFORM_URL,
+  platformUrl: process.env.9ROUTER_URL,
   qoderUrl: process.env.QODER_URL,
-  platformPassword: process.env.PLATFORM_PASSWORD,
+  platformPassword: process.env.9ROUTER_PASSWORD,
   password: process.env.QODER_ACCOUNT_PASSWORD,
   // Other settings
   outputFile: 'keys.csv',
@@ -108,33 +108,33 @@ npm run loop
 
 ### Xiaomi MiMo (11 steps)
 
-| Step | Description |
-|------|-------------|
-| 1 | Launch Chromium browser |
-| 2 | Generate temporary email |
-| 3 | Open registration page + accept cookies |
-| 4 | Region auto-detected |
-| 5 | Fill email, password, confirm password, agree checkbox |
-| 6 | Submit form + captcha (manual/auto) |
-| 7 | Wait for OTP email → auto-extract → auto-fill |
-| 8 | Terms & agreements (checklist + confirm) |
-| 9 | Redirect to console + accept cookies |
-| 10 | Navigate to API Keys → Create API Key |
-| 11 | Extract API key → save to `keys.csv` |
+| Step | Description                                            |
+| ---- | ------------------------------------------------------ |
+| 1    | Launch Chromium browser                                |
+| 2    | Generate temporary email                               |
+| 3    | Open registration page + accept cookies                |
+| 4    | Region auto-detected                                   |
+| 5    | Fill email, password, confirm password, agree checkbox |
+| 6    | Submit form + captcha (manual/auto)                    |
+| 7    | Wait for OTP email → auto-extract → auto-fill        |
+| 8    | Terms & agreements (checklist + confirm)               |
+| 9    | Redirect to console + accept cookies                   |
+| 10   | Navigate to API Keys → Create API Key                 |
+| 11   | Extract API key → save to `keys.csv`                |
 
 ### Qoder (9 steps per loop)
 
-| Step | Description |
-|------|-------------|
-| 1/9 | Navigate to platform → login (first time only) |
-| 2/9 | Navigate to Qoder provider page |
-| 3/9 | Click "Add" → opens new tab |
-| 4/9 | OAuth: Sign in with another account → Sign up |
-| 5/9 | Create temp email + generate random name |
-| 6/9 | Fill form (First Name, Last Name, Email, Terms) + Continue |
-| 7/9 | Enter password + Continue |
-| 8/9 | Click to verify → captcha (auto puzzle solver / manual) |
-| 9/9 | Wait OTP email → auto-fill (Ant Design OTP component) |
+| Step | Description                                                |
+| ---- | ---------------------------------------------------------- |
+| 1/9  | Navigate to platform → login (first time only)            |
+| 2/9  | Navigate to Qoder provider page                            |
+| 3/9  | Click "Add" → opens new tab                               |
+| 4/9  | OAuth: Sign in with another account → Sign up             |
+| 5/9  | Create temp email + generate random name                   |
+| 6/9  | Fill form (First Name, Last Name, Email, Terms) + Continue |
+| 7/9  | Enter password + Continue                                  |
+| 8/9  | Click to verify → captcha (auto puzzle solver / manual)   |
+| 9/9  | Wait OTP email → auto-fill (Ant Design OTP component)     |
 
 After each loop, the OAuth tab stays open and the dashboard navigates back to Qoder page for the next registration.
 
@@ -156,17 +156,17 @@ timestamp,platform,first_name,last_name,email,password,status
 
 ## File Structure
 
-| File | Description |
-|------|-------------|
-| `register.js` | Xiaomi MiMo bot (Playwright) |
-| `register_qoder.js` | Qoder bot (Playwright + multi-tab) |
-| `loop.js` | Xiaomi loop runner with proxy rotation |
-| `tempmail.js` | Temp email + OTP extractor (Node) |
-| `tempmail.py` | Temp email + OTP extractor (Python) |
-| `captcha_ocr.py` | Keras OCR for Xiaomi custom captcha |
-| `captcha_puzzle_solver.py` | OpenCV puzzle captcha solver (Aliyun) |
-| `.env` | Credentials (gitignored) |
-| `keys.csv` | Output data (gitignored) |
+| File                         | Description                            |
+| ---------------------------- | -------------------------------------- |
+| `register.js`              | Xiaomi MiMo bot (Playwright)           |
+| `register_qoder.js`        | Qoder bot (Playwright + multi-tab)     |
+| `loop.js`                  | Xiaomi loop runner with proxy rotation |
+| `tempmail.js`              | Temp email + OTP extractor (Node)      |
+| `tempmail.py`              | Temp email + OTP extractor (Python)    |
+| `captcha_ocr.py`           | Keras OCR for Xiaomi custom captcha    |
+| `captcha_puzzle_solver.py` | OpenCV puzzle captcha solver (Aliyun)  |
+| `.env`                     | Credentials (gitignored)               |
+| `keys.csv`                 | Output data (gitignored)               |
 
 ## Notes
 
