@@ -5,6 +5,7 @@
   "main": "register.js",
   "scripts": {
     "register": "node register.js",
+    "qoder": "node register_qoder.js",
     "loop": "node loop.js",
     "tempmail": "node tempmail.js",
     "playwright:install": "npx playwright install chromium"
