@@ -4,23 +4,28 @@ Multi-platform automated account registration bot using Playwright + temporary e
 
 ## Supported Platforms
 
-| Platform | Status |
-|----------|--------|
-| [Xiaomi MiMo API](https://platform.xiaomimimo.com) | Supported |
-| More coming soon... | — |
+| Platform | Script | Command |
+|----------|--------|---------|
+| [Xiaomi MiMo API](https://platform.xiaomimimo.com) | `register.js` | `npm run register` |
+| [Qoder](https://qoder.com) (via llm-agent-trade) | `register_qoder.js` | `npm run qoder` |
 
 ## Features
 
-- **Auto register** — fill form, select region, handle captcha (manual)
+- **Auto register** — fill form, handle captcha, verify OTP
 - **Temp email** — generate disposable email + auto-extract OTP verification code
 - **Terms & agreements** — auto-check + confirm
 - **Cookie consent** — auto-accept on every page
-- **API key extraction** — create API key automatically + save to file
-- **2captcha ready** — fill in API key, set `captchaMode: '2captcha'`
+- **Human-like typing** — character-by-character with randomized delays (Qoder)
+- **Anti-bot detection** — stealth plugin, webdriver removal, fake browser properties
+- **Captcha solving** — auto (OpenCV puzzle solver) with manual fallback
+- **Multi-tab support** — dashboard stays open, OAuth in new tab per run
+- **Loop mode** — register multiple accounts in one session
+- **2captcha ready** — fill in API key, set `captchaMode: '2captcha'` (Xiaomi)
 
 ## Prerequisites
 
 - Node.js >= 18
+- Python 3 + `opencv-python` (for puzzle captcha solver)
 - Chromium (auto-installed via Playwright)
 
 ## Installation
@@ -28,15 +33,23 @@ Multi-platform automated account registration bot using Playwright + temporary e
 ```bash
 npm install
 npx playwright install chromium
+pip install opencv-python
 ```
 
-## Usage
+## Configuration
 
-```bash
-npm run register
+### Environment Variables (.env)
+
+Sensitive credentials are stored in `.env` (gitignored):
+
+```env
+PLATFORM_PASSWORD=your_platform_password
+PLATFORM_URL=https://your-platform-url.com
+QODER_URL=https://your-platform-url.com/dashboard/providers/qoder
+QODER_ACCOUNT_PASSWORD=your_account_password
 ```
 
-### Configuration
+### Xiaomi MiMo
 
 Edit the `CONFIG` section in `register.js`:
 
@@ -44,7 +57,7 @@ Edit the `CONFIG` section in `register.js`:
 const CONFIG = {
   registerUrl: 'https://...',    // platform registration URL
   consoleUrl: 'https://...',     // platform console URL
-  password: 'PortoAuto2025!',    // account password
+  password: '...',               // account password
   region: 'Indonesia',           // region (auto-detected from URL)
   apiKeyName: 'auto-xxx',        // API key name prefix
   outputFile: 'keys.csv',        // CSV output file
@@ -53,7 +66,47 @@ const CONFIG = {
 };
 ```
 
-## Flow (11 steps)
+### Qoder
+
+Edit the `CONFIG` section in `register_qoder.js`:
+
+```js
+const CONFIG = {
+  // URLs & passwords from .env
+  platformUrl: process.env.PLATFORM_URL,
+  qoderUrl: process.env.QODER_URL,
+  platformPassword: process.env.PLATFORM_PASSWORD,
+  password: process.env.QODER_ACCOUNT_PASSWORD,
+  // Other settings
+  outputFile: 'keys.csv',
+  loops: 5,                      // number of registration loops
+  captchaMode: 'auto',           // 'manual' | 'auto' (puzzle solver + manual fallback)
+};
+```
+
+## Usage
+
+### Xiaomi MiMo
+
+```bash
+npm run register
+```
+
+### Qoder
+
+```bash
+npm run qoder
+```
+
+### Loop Mode (Xiaomi)
+
+```bash
+npm run loop
+```
+
+## Flow
+
+### Xiaomi MiMo (11 steps)
 
 | Step | Description |
 |------|-------------|
@@ -62,42 +115,64 @@ const CONFIG = {
 | 3 | Open registration page + accept cookies |
 | 4 | Region auto-detected |
 | 5 | Fill email, password, confirm password, agree checkbox |
-| 6 | Submit form + **manual captcha** (auto-detect solved) |
+| 6 | Submit form + captcha (manual/auto) |
 | 7 | Wait for OTP email → auto-extract → auto-fill |
 | 8 | Terms & agreements (checklist + confirm) |
 | 9 | Redirect to console + accept cookies |
 | 10 | Navigate to API Keys → Create API Key |
 | 11 | Extract API key → save to `keys.csv` |
 
+### Qoder (9 steps per loop)
+
+| Step | Description |
+|------|-------------|
+| 1/9 | Navigate to platform → login (first time only) |
+| 2/9 | Navigate to Qoder provider page |
+| 3/9 | Click "Add" → opens new tab |
+| 4/9 | OAuth: Sign in with another account → Sign up |
+| 5/9 | Create temp email + generate random name |
+| 6/9 | Fill form (First Name, Last Name, Email, Terms) + Continue |
+| 7/9 | Enter password + Continue |
+| 8/9 | Click to verify → captcha (auto puzzle solver / manual) |
+| 9/9 | Wait OTP email → auto-fill (Ant Design OTP component) |
+
+After each loop, the OAuth tab stays open and the dashboard navigates back to Qoder page for the next registration.
+
 ## Output
 
-CSV format in `keys.csv` (auto-creates headers on first run, appends rows):
+### Xiaomi MiMo
 
 ```csv
 timestamp,email,password,api_key_name,api_key
-"2026-06-19T12:00:00.000Z","user_xxx@domain.com","PortoAuto2025!","auto-xxx","sk-xxxxxxxxxxxxxxxxx"
+"2026-06-19T12:00:00.000Z","user_xxx@domain.com","***","auto-xxx","sk-xxxxxxxxxxxxxxxxx"
+```
+
+### Qoder
+
+```csv
+timestamp,platform,first_name,last_name,email,password,status
+"2026-06-19T12:00:00.000Z","qoder","John","Smith","user_xxx@moymoy.me","***","registered"
 ```
 
 ## File Structure
 
 | File | Description |
 |------|-------------|
-| `register.js` | Main bot (Playwright) |
+| `register.js` | Xiaomi MiMo bot (Playwright) |
+| `register_qoder.js` | Qoder bot (Playwright + multi-tab) |
+| `loop.js` | Xiaomi loop runner with proxy rotation |
 | `tempmail.js` | Temp email + OTP extractor (Node) |
 | `tempmail.py` | Temp email + OTP extractor (Python) |
-| `keys.csv` | API key output (gitignored) |
-| `*.png` | Debug screenshots (gitignored) |
-
-## Screenshots
-
-The script automatically saves screenshots at each step for debugging:
-- `before_submit.png` — form before submission
-- `api_keys_page.png` — API keys page
-- `api_key_created.png` — after API key creation
-- `error.png` — on error
+| `captcha_ocr.py` | Keras OCR for Xiaomi custom captcha |
+| `captcha_puzzle_solver.py` | OpenCV puzzle captcha solver (Aliyun) |
+| `.env` | Credentials (gitignored) |
+| `keys.csv` | Output data (gitignored) |
 
 ## Notes
 
-- Captcha must be solved manually (browser opens in visible mode)
-- If selectors don't match, check the screenshots and update selectors in `register.js`
+- Xiaomi: captcha must be solved manually (browser opens in visible mode)
+- Qoder: captcha auto-solved via OpenCV puzzle solver, falls back to manual
+- Qoder: OTP uses Ant Design component (`input.ant-otp-input`, `size="1"`)
+- Qoder: Aliyun captcha (`#aliyunCaptcha-*`) — puzzle slider type
+- If selectors don't match, update them in the respective script
 - Supabase anon key in `tempmail.js` is public
