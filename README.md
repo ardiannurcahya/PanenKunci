@@ -17,15 +17,15 @@ Multi-platform automated account registration bot using Playwright + temporary e
 - **Cookie consent** — auto-accept on every page
 - **Human-like typing** — character-by-character with randomized delays (Qoder)
 - **Anti-bot detection** — stealth plugin, webdriver removal, fake browser properties
-- **Captcha solving** — auto (OpenCV puzzle solver) with manual fallback
+- **Captcha solving** — auto (CapMonster: Aliyun slider + ImageToText OCR) with manual fallback
 - **Multi-tab support** — dashboard stays open, OAuth in new tab per run
 - **Loop mode** — register multiple accounts in one session
 - **2captcha ready** — fill in API key, set `captchaMode: '2captcha'` (Xiaomi)
+- **CapMonster ready** — set `CAPMONSTER_API_KEY` in `.env` for Xiaomi custom captcha (ImageToText) + Qoder Aliyun slider
 
 ## Prerequisites
 
 - Node.js >= 18
-- Python 3 + `opencv-python` (for puzzle captcha solver)
 - Chromium (auto-installed via Playwright)
 
 ## Installation
@@ -33,7 +33,6 @@ Multi-platform automated account registration bot using Playwright + temporary e
 ```bash
 npm install
 npx playwright install chromium
-pip install opencv-python
 ```
 
 ## Configuration
@@ -163,15 +162,15 @@ timestamp,platform,first_name,last_name,email,password,status
 | `loop.js`                  | Xiaomi loop runner with proxy rotation |
 | `tempmail.js`              | Temp email + OTP extractor (Node)      |
 | `tempmail.py`              | Temp email + OTP extractor (Python)    |
-| `captcha_ocr.py`           | Keras OCR for Xiaomi custom captcha    |
 | `captcha_puzzle_solver.py` | OpenCV puzzle captcha solver (Aliyun)  |
+| `utils/capmonster.js`      | CapMonster solver (Aliyun + ImageToText) |
 | `.env`                     | Credentials (gitignored)               |
 | `keys.csv`                 | Output data (gitignored)               |
 
 ## Notes
 
-- Xiaomi: captcha must be solved manually (browser opens in visible mode)
-- Qoder: captcha auto-solved via OpenCV puzzle solver, falls back to manual
+- Xiaomi: captcha must be solved manually (browser opens in visible mode) unless `CAPMONSTER_API_KEY` is set (ImageToText for custom captcha)
+- Qoder: captcha auto-solved via CapMonster (Aliyun slider), falls back to manual
 - Qoder: OTP uses Ant Design component (`input.ant-otp-input`, `size="1"`)
 - Qoder: Aliyun captcha (`#aliyunCaptcha-*`) — puzzle slider type
 - If selectors don't match, update them in the respective script

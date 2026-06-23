@@ -34,7 +34,7 @@ function run() {
     } else {
       console.log(`\nRun #${count} stopped (code ${code}).`);
     }
-    const delay = 40000 + Math.floor(Math.random() * 30000);
+    const delay = 10000 + Math.floor(Math.random() * 10000);
     console.log(`Waiting ${Math.round(delay / 1000)}s before next run...\n`);
     setTimeout(run, delay);
   });

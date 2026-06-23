@@ -1,62 +1,4 @@
-const fs = require('fs');
-const path = require('path');
-const { spawnSync } = require('child_process');
 const { sleep } = require('./helpers');
-
-// Xiaomi text-image captcha solver (using captcha_ocr.py)
-async function solveCaptchaWithPython(imgLocator, page, retries = 10) {
-  const tmpDir = require('os').tmpdir();
-  const imgPath = path.join(tmpDir, `captcha_${Date.now()}.png`);
-
-  for (let i = 0; i < retries; i++) {
-    console.log(`  OCR attempt ${i + 1}/${retries}...`);
-    await sleep(1000);
-
-    try {
-      // Screenshot the captcha image element
-      await imgLocator.screenshot({ path: imgPath });
-
-      // Run Python OCR
-      const result = spawnSync('python', [path.join(__dirname, '../captcha_ocr.py'), imgPath], {
-        encoding: 'utf-8',
-        timeout: 30000,
-      });
-
-      if (result.error) {
-        console.log(`  Python error: ${result.error.message}`);
-        continue;
-      }
-
-      const code = (result.stdout || '').trim().replace(/[^a-zA-Z0-9]/g, '');
-      console.log(`  OCR result: "${code}"`);
-
-      if (code.length >= 4 && code.length <= 8) {
-        const input = page.locator('.mi-captcha-field input, input[name*="icode"]').first();
-        await input.fill('');
-        await input.fill(code);
-        await sleep(500);
-
-        const submit = page.locator('button[type="submit"], button:has-text("Verify"), button:has-text("Confirm")').first();
-        if (await submit.isVisible({ timeout: 500 }).catch(() => false)) {
-          await submit.click();
-          await sleep(2000);
-
-          if (!(await imgLocator.isVisible({ timeout: 1000 }).catch(() => false))) {
-            return true;
-          }
-          console.log('  Wrong, retrying...');
-        }
-      } else {
-        console.log('  Invalid code length, retrying...');
-      }
-    } catch (e) {
-      console.log(`  OCR error: ${e.message}`);
-    } finally {
-      try { fs.unlinkSync(imgPath); } catch (_) {}
-    }
-  }
-  return false;
-}
 
 // 2Captcha service reCAPTCHA solver
 async function solveRecaptchaWith2captcha(page, apiKey) {
@@ -224,7 +166,6 @@ async function waitForQoderCaptchaSolved(page, selectors, maxWaitMs = 180000) {
 }
 
 module.exports = {
-  solveCaptchaWithPython,
   solveRecaptchaWith2captcha,
   waitForCaptchaSolved,
   waitForQoderCaptchaSolved,

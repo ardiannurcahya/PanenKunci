@@ -1,3 +1,6 @@
+const { loadEnv } = require('./utils/env.js');
+loadEnv();
+
 const { chromium } = require('playwright-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth')();
 chromium.use(StealthPlugin);
@@ -9,7 +12,8 @@ const path = require('path');
 
 const { findFfmpeg } = require('./utils/ffmpeg.js');
 const { sleep, rand, typeHuman, handleCookies } = require('./utils/helpers.js');
-const { solveCaptchaWithPython, solveRecaptchaWith2captcha, waitForCaptchaSolved } = require('./utils/captcha.js');
+const { solveRecaptchaWith2captcha, waitForCaptchaSolved } = require('./utils/captcha.js');
+const { solveImageCaptcha } = require('./utils/capmonster.js');
 
 const ffmpegPath = findFfmpeg();
 console.log(`  ffmpeg: ${ffmpegPath}`);
@@ -35,6 +39,8 @@ const CONFIG = {
   // Captcha mode: 'manual' | 'audio' | '2captcha'
   captchaMode: 'audio',
   captchaApiKey: '',
+  // CapMonster API key for Xiaomi custom text/image captcha (2nd captcha)
+  capmonsterApiKey: process.env.CAPMONSTER_API_KEY || '',
   // Proxy (optional): 'http://user:pass@host:port' or empty to disable
   proxy: process.env.PROXY || '',
 };
@@ -52,7 +58,7 @@ async function getRandomProxy() {
   return FREE_PROXIES[Math.floor(Math.random() * FREE_PROXIES.length)];
 }
 
-// solveCaptchaWithPython and handleCookies functions are now imported from ./utils/captcha.js and ./utils/helpers.js
+// solveRecaptchaWith2captcha and waitForCaptchaSolved functions are now imported from ./utils/captcha.js
 
 async function handleTermsAgreement(page) {
   // Poll for terms page to fully load (max 15s)
@@ -277,18 +283,37 @@ async function register() {
         console.log('  reCAPTCHA solved via audio!');
 
         // Check for Xiaomi custom 2nd captcha (text/image)
-        await sleep(2000);
-        const customImg = page.locator('.mi-captcha-field__image, img[src*="getCode"], img[src*="icodeType"]').first();
-        if (await customImg.isVisible({ timeout: 2000 }).catch(() => false)) {
-          console.log('  >>> XIAOMI CUSTOM CAPTCHA DETECTED — running OCR...');
+        console.log('  Waiting for next step (custom captcha modal or OTP screen)...');
+        let captchaVisible = false;
+        let otpVisible = false;
+        const checkDeadline = Date.now() + 15000;
+        
+        while (Date.now() < checkDeadline) {
+          const customImg = page.locator('.mi-captcha-field__image, img[src*="getCode"], img[src*="icodeType"]').first();
+          if (await customImg.isVisible({ timeout: 500 }).catch(() => false)) {
+            captchaVisible = true;
+            break;
+          }
+          const otpInput = page.locator('input[maxlength="6"], input[maxlength="4"], input[type="number"], input[placeholder*="code" i], input[placeholder*="OTP" i], input[placeholder*="verif" i]').first();
+          if (await otpInput.isVisible({ timeout: 500 }).catch(() => false)) {
+            otpVisible = true;
+            break;
+          }
+          await sleep(500);
+        }
+
+        if (captchaVisible) {
+          const customImg = page.locator('.mi-captcha-field__image, img[src*="getCode"], img[src*="icodeType"]').first();
+          console.log('  >>> XIAOMI CUSTOM CAPTCHA DETECTED — solving with CapMonster ImageToText...');
           await page.screenshot({ path: 'custom_captcha.png' });
 
-          const input = page.locator('.mi-captcha-field input, input[name*="icode"]').first();
-          const solved = await solveCaptchaWithPython(customImg, page);
+          const solved = await solveImageCaptcha(customImg, page, {
+            apiKey: CONFIG.capmonsterApiKey,
+          });
           if (solved) {
             console.log('  Custom captcha solved!');
           } else {
-            console.log('  >>> OCR failed — solve manually within 20s or browser closes');
+            console.log('  >>> CapMonster failed — solve manually within 20s or browser closes');
             const manualSolved = await waitForCaptchaSolved(page, 20000);
             if (!manualSolved) {
               console.log('  Timeout, closing browser');
@@ -296,6 +321,10 @@ async function register() {
               process.exit(0);
             }
           }
+        } else if (otpVisible) {
+          console.log('  Directly advanced to OTP screen, no custom captcha needed.');
+        } else {
+          console.log('  [WARN] Neither custom captcha nor OTP screen detected after 15s.');
         }
       } catch (e) {
         console.log(`  Audio solver failed: ${e.message}`);

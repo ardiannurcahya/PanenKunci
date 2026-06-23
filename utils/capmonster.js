@@ -364,6 +364,188 @@ async function solveAliyunCaptcha(page, options) {
   }
 }
 
+// ─── solveImageCaptcha: solve a text/image captcha via CapMonster ImageToTextTask ─
+// imgLocator — Playwright Locator for the captcha <img> element
+// page       — the Playwright page (used to fetch raw image + fill answer + submit)
+// options    — { apiKey, retries?, timeoutMs?, inputSelector?, submitSelector? }
+//
+// Flow: fetch the raw image bytes from the <img src> URL (preserves cookies) →
+// base64 → submit to CapMonster as ImageToTextTask → poll for result → fill
+// the text input → click submit → verify the captcha image refreshed (wrong)
+// or disappeared (correct) → retry on failure.
+async function solveImageCaptcha(imgLocator, page, options) {
+  const {
+    apiKey,
+    retries = 2,
+    timeoutMs = 180000,
+    inputSelector = '.mi-captcha-field input, input[name*="icode"]',
+    submitSelector = 'button[type="submit"], button:has-text("Verify"), button:has-text("Confirm")',
+  } = options;
+
+  if (!apiKey) {
+    console.log('  [WARN] No CAPMONSTER_API_KEY provided for image captcha.');
+    return false;
+  }
+
+  const os = require('os');
+  const fs = require('fs');
+  const path = require('path');
+
+  for (let i = 0; i < retries; i++) {
+    console.log(`  CapMonster ImageToText attempt ${i + 1}/${retries}...`);
+    await sleep(1000);
+
+    const debugPath = path.join(os.tmpdir(), `captcha_${Date.now()}.png`);
+    try {
+      // Extract the image data from the <img> element via canvas.
+      // IMPORTANT: fetching the src URL again would generate a NEW captcha
+      // (Xiaomi uses a cache-buster param `t=random`). Drawing the already-
+      // loaded <img> to a canvas captures exactly what's on screen.
+      const bodyBase64 = await imgLocator.evaluate((img) => {
+        return new Promise((resolve, reject) => {
+          try {
+            // Wait for image to be fully loaded
+            if (!img.complete || img.naturalWidth === 0) {
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.naturalWidth || img.width;
+                canvas.height = img.naturalHeight || img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                resolve(canvas.toDataURL('image/png').split(',')[1] || '');
+              };
+              img.onerror = () => reject(new Error('Image load error'));
+            } else {
+              const canvas = document.createElement('canvas');
+              canvas.width = img.naturalWidth || img.width;
+              canvas.height = img.naturalHeight || img.height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0);
+              resolve(canvas.toDataURL('image/png').split(',')[1] || '');
+            }
+          } catch (e) {
+            reject(e);
+          }
+        });
+      }).catch(() => null);
+
+      // Fallback: screenshot the element if canvas extraction failed
+      if (!bodyBase64) {
+        console.log('  Canvas extraction failed, falling back to screenshot...');
+        await imgLocator.screenshot({ path: debugPath });
+        const imgBuffer = fs.readFileSync(debugPath);
+        bodyBase64 = imgBuffer.toString('base64');
+      } else {
+        // Save debug copy
+        fs.writeFileSync(debugPath, Buffer.from(bodyBase64, 'base64'));
+      }
+
+      console.log(`  Image size: ${Math.round(bodyBase64.length * 3 / 4)} bytes`);
+
+      // Submit to CapMonster as ImageToTextTask (no CapMonsterModule — let
+      // CapMonster auto-detect the best engine)
+      const taskId = await createTask(apiKey, {
+        type: 'ImageToTextTask',
+        body: bodyBase64,
+        Case: true,
+        Numeric: false,
+        Math: false,
+      });
+      console.log(`  Task created: ${taskId}. Waiting for solution...`);
+
+      // Poll for result
+      const solution = await getTaskResult(apiKey, taskId, { timeoutMs });
+      const code = (solution && solution.text || '').trim().replace(/[^a-zA-Z0-9]/g, '');
+      console.log(`  CapMonster result: "${code}"`);
+
+      if (code.length < 3 || code.length > 8) {
+        console.log('  Invalid code length, retrying...');
+        continue;
+      }
+
+      // Fill the answer into the input
+      const input = page.locator(inputSelector).first();
+      const inputFound = await input.isVisible({ timeout: 1000 }).catch(() => false);
+      if (!inputFound) {
+        console.log('  [WARN] Captcha input not found, retrying...');
+        continue;
+      }
+      await input.focus();
+      await input.fill('');
+      await input.pressSequentially(code, { delay: 100 });
+      await input.dispatchEvent('input', { bubbles: true });
+      await input.dispatchEvent('change', { bubbles: true });
+      await sleep(500);
+      console.log(`  Filled captcha input with: "${code}"`);
+
+      // Some Xiaomi captchas auto-verify on input — check if image refreshed
+      await sleep(500);
+      if (!(await imgLocator.isVisible({ timeout: 500 }).catch(() => false))) {
+        console.log('  Captcha auto-verified!');
+        return true;
+      }
+
+      // Click submit — try multiple selectors, prioritizing specific captcha containers
+      const allSubmitSelectors = [
+        '.mi-captcha-field button',
+        '.mi-captcha-field button:has-text("Submit")',
+        '.mi-captcha-field button:has-text("Confirm")',
+        '.mi-captcha-field a',
+        '.mi-dialog button:has-text("Submit")',
+        '.mi-modal button:has-text("Submit")',
+        '.mi-dialog button:has-text("Confirm")',
+        '.mi-modal button:has-text("Confirm")',
+        submitSelector,
+        'button:has-text("Submit")',
+        'button:has-text("OK")',
+        'button:has-text("Next")',
+        'button:has-text("Continue")',
+        'button:has-text("Register")',
+        'button:has-text("Confirm")',
+        'button:has-text("Verify")',
+        'button[type="submit"]',
+        'input[type="submit"]',
+      ];
+      let submitClicked = false;
+      for (const sel of allSubmitSelectors) {
+        const btn = page.locator(sel).first();
+        if (await btn.isVisible({ timeout: 300 }).catch(() => false)) {
+          if (await btn.isEnabled().catch(() => false)) {
+            await btn.click();
+            submitClicked = true;
+            console.log(`  Clicked submit via: ${sel}`);
+            break;
+          } else {
+            console.log(`  Submit button ${sel} is visible but disabled, skipping...`);
+          }
+        }
+      }
+
+      // Fallback: press Enter on the input
+      if (!submitClicked) {
+        console.log('  No enabled submit button found, pressing Enter on input...');
+        await input.press('Enter');
+        submitClicked = true;
+      }
+
+      if (submitClicked) {
+        await sleep(2000);
+
+        // If the captcha image is gone, we succeeded
+        if (!(await imgLocator.isVisible({ timeout: 1000 }).catch(() => false))) {
+          return true;
+        }
+        console.log('  Wrong answer, retrying...');
+      }
+    } catch (e) {
+      console.log(`  CapMonster ImageToText error: ${e.message}`);
+    } finally {
+      try { fs.unlinkSync(debugPath); } catch (_) {}
+    }
+  }
+  return false;
+}
+
 module.exports = {
   createTask,
   getTaskResult,
@@ -371,4 +553,5 @@ module.exports = {
   injectToken,
   verifySolved,
   solveAliyunCaptcha,
+  solveImageCaptcha,
 };
