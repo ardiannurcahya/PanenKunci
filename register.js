@@ -175,20 +175,7 @@ async function register() {
     await page.goto(CONFIG.landingUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await handleCookies(page);
     await sleep(rand(2000, 3000));
-
-    console.log('  Clicking Sign Up...');
-    const signUpBtn = page.locator(
-      'a:has-text("Sign Up"), a:has-text("Sign up"), a:has-text("Register"), ' +
-      'button:has-text("Sign Up"), button:has-text("Register"), ' +
-      '[href*="register"], [href*="signup"], [href*="sign-up"]'
-    ).first();
-    try {
-      await signUpBtn.click({ timeout: 5000 });
-      console.log('  Sign Up clicked, waiting for redirect...');
-    } catch (_) {
-      console.log('  Sign Up button not found, navigating directly...');
-      await page.goto(CONFIG.registerUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    }
+    await page.goto(CONFIG.registerUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
     // Wait for Xiaomi registration page to load
     await page.waitForURL(/account\.xiaomi\.com/, { timeout: 15000 }).catch(() => {});
@@ -230,7 +217,7 @@ async function register() {
     }
 
     // Take screenshot for debugging
-    await page.screenshot({ path: 'before_submit.png' });
+    // await page.screenshot({ path: 'before_submit.png' });
     console.log('  Screenshot saved: before_submit.png');
 
     // Step 5: Submit and handle captcha
@@ -305,7 +292,7 @@ async function register() {
         if (captchaVisible) {
           const customImg = page.locator('.mi-captcha-field__image, img[src*="getCode"], img[src*="icodeType"]').first();
           console.log('  >>> XIAOMI CUSTOM CAPTCHA DETECTED — solving with CapMonster ImageToText...');
-          await page.screenshot({ path: 'custom_captcha.png' });
+          // await page.screenshot({ path: 'custom_captcha.png' });
 
           const solved = await solveImageCaptcha(customImg, page, {
             apiKey: CONFIG.capmonsterApiKey,
@@ -314,7 +301,7 @@ async function register() {
             console.log('  Custom captcha solved!');
           } else {
             console.log('  >>> CapMonster failed — solve manually within 20s or browser closes');
-            const manualSolved = await waitForCaptchaSolved(page, 20000);
+            const manualSolved = await waitForCaptchaSolved(page, 40000);
             if (!manualSolved) {
               console.log('  Timeout, closing browser');
               await browser.close();
@@ -352,7 +339,7 @@ async function register() {
     if (!otp) {
       console.log('  TIMEOUT: No OTP received. Check browser manually.');
       console.log('  Browser stays open for manual intervention.');
-      await page.screenshot({ path: 'timeout.png' });
+      // await page.screenshot({ path: 'timeout.png' });
       // Don't close browser so user can intervene
       await new Promise(() => {}); // Keep alive
       return;
@@ -395,7 +382,7 @@ async function register() {
     await handleCookies(page);
     await sleep(2000);
 
-    await page.screenshot({ path: 'registered.png' });
+    // await page.screenshot({ path: 'registered.png' });
     console.log('  Landed on platform console');
 
     // Step 10: Create API Key
@@ -433,7 +420,7 @@ async function register() {
       for (const p of apiKeyPaths) {
         const url = CONFIG.consoleUrl + p;
         try {
-          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 8000 });
+          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 6000 });
           await handleCookies(page);
           await sleep(1500);
           foundApiPage = true;
@@ -443,7 +430,7 @@ async function register() {
       }
     }
 
-    await page.screenshot({ path: 'api_keys_page.png' });
+    // await page.screenshot({ path: 'api_keys_page.png' });
     await sleep(1000);
 
     // Click "Create" or "New" button
@@ -474,7 +461,7 @@ async function register() {
       console.log('  Create API Key dialog opened');
     } else {
       console.log('  [WARN] Create button not found');
-      await page.screenshot({ path: 'no_create_btn.png' });
+      // await page.screenshot({ path: 'no_create_btn.png' });
     }
 
     // Fill API key name in modal/input
@@ -529,7 +516,7 @@ async function register() {
       await sleep(2000);
       console.log('  API Key creation confirmed');
     }
-    await page.screenshot({ path: 'api_key_created.png' });
+    // await page.screenshot({ path: 'api_key_created.png' });
 
     // Step 10: Extract and save the API key
     console.log('[11/11] Extracting API Key...');
@@ -605,7 +592,7 @@ async function register() {
 
   } catch (err) {
     console.error('ERROR:', err.message);
-    await page.screenshot({ path: 'error.png' });
+    // await page.screenshot({ path: 'error.png' });
     console.log('Error screenshot saved: error.png');
     await sleep(10000);
   } finally {
