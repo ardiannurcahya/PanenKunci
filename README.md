@@ -7,6 +7,7 @@ Multi-platform automated account registration bot using Playwright + temporary e
 | Platform                                        | Script                | Command              |
 | ----------------------------------------------- | --------------------- | -------------------- |
 | [Xiaomi MiMo API](https://platform.xiaomimimo.com) | `register.js`       | `npm run register` |
+| [Alibaba Cloud](https://account.alibabacloud.com)  | `register_alibaba.js` | `npm run alibaba`  |
 | [Qoder](https://qoder.com) (via llm-agent-trade)   | `register_qoder.js` | `npm run qoder`    |
 
 ## Features
@@ -15,9 +16,10 @@ Multi-platform automated account registration bot using Playwright + temporary e
 - **Temp email** — generate disposable email + auto-extract OTP verification code
 - **Terms & agreements** — auto-check + confirm
 - **Cookie consent** — auto-accept on every page
-- **Human-like typing** — character-by-character with randomized delays (Qoder)
-- **Anti-bot detection** — stealth plugin, webdriver removal, fake browser properties
+- **Human-like typing** — character-by-character with randomized delays
+- **Anti-bot detection** — stealth plugin, webdriver removal, fake browser properties, WebGL/Canvas/AudioContext fingerprint spoofing
 - **Captcha solving** — auto (CapMonster: Aliyun slider + ImageToText OCR) with manual fallback
+- **Slider captcha** — Baxia (Alibaba) auto-slide with human-like drag pattern
 - **Multi-tab support** — dashboard stays open, OAuth in new tab per run
 - **Loop mode** — register multiple accounts in one session
 - **2captcha ready** — fill in API key, set `captchaMode: '2captcha'` (Xiaomi)
@@ -46,6 +48,9 @@ PLATFORM_PASSWORD=your_platform_password
 PLATFORM_URL=https://your-platform-url.com
 QODER_URL=https://your-platform-url.com/dashboard/providers/qoder
 QODER_ACCOUNT_PASSWORD=your_account_password
+ALIBABA_PASSWORD=your_alibaba_password
+CAPMONSTER_API_KEY=your_capmonster_key
+PROXY=http://user:pass@host:port
 ```
 
 ### Xiaomi MiMo
@@ -62,6 +67,19 @@ const CONFIG = {
   outputFile: 'keys.csv',        // CSV output file
   captchaMode: 'manual',         // 'manual' | '2captcha'
   captchaApiKey: '',             // fill in if using 2captcha
+};
+```
+
+### Alibaba Cloud
+
+Edit the `CONFIG` section in `register_alibaba.js`:
+
+```js
+const CONFIG = {
+  registerUrl: 'https://account.alibabacloud.com/register/intl_register.htm',
+  consoleUrl: 'https://modelstudio.console.alibabacloud.com',
+  password: process.env.ALIBABA_PASSWORD || 'AlibabaAuto2025!',
+  outputFile: 'alibaba.csv',
 };
 ```
 
@@ -89,6 +107,12 @@ const CONFIG = {
 
 ```bash
 npm run register
+```
+
+### Alibaba Cloud
+
+```bash
+npm run alibaba
 ```
 
 ### Qoder
@@ -121,6 +145,27 @@ npm run loop
 | 10   | Navigate to API Keys → Create API Key                 |
 | 11   | Extract API key → save to `keys.csv`                |
 
+### Alibaba Cloud (9 steps)
+
+| Step | Description                                                        |
+| ---- | ------------------------------------------------------------------ |
+| 1/9  | Launch Chromium (stealth + anti-fingerprint: WebGL, Canvas, Audio) |
+| 2/9  | Generate temporary email via Supabase                              |
+| 3/9  | Navigate to account.alibabacloud.com                               |
+| 4/9  | Select "Individual Account" (inside iframe)                        |
+| 5/9  | Click "Next"                                                       |
+| 6/9  | Fill email, password, confirm password (char-by-char typing)       |
+| 7/9  | Click "Sign Up" → solve Baxia slider captcha (auto/manual)        |
+| 8/9  | Select email tab → click "Send" → wait OTP → fill `#emailCaptcha` |
+| 9/9  | Check "I agree" → Sign Up → open Model Studio in new tab → create API key → save to `alibaba.csv` |
+
+**Notes:**
+- Registration form is inside `#alibaba-register-box` iframe
+- After Sign Up Step 1, Baxia slider captcha appears (auto-slided)
+- After OTP, captcha may appear again (waits for manual solve)
+- Verification form is in `passport.alibabacloud.com` frame
+- API key is in `.keyText__qJgAI` div
+
 ### Qoder (9 steps per loop)
 
 | Step | Description                                                |
@@ -146,6 +191,13 @@ timestamp,email,password,api_key_name,api_key
 "2026-06-19T12:00:00.000Z","user_xxx@domain.com","***","auto-xxx","sk-xxxxxxxxxxxxxxxxx"
 ```
 
+### Alibaba Cloud
+
+```csv
+timestamp,email,password,api_key
+"2026-06-19T12:00:00.000Z","user_xxx@moymoy.me","***","sk-xxxxxxxxxxxxxxxxx"
+```
+
 ### Qoder
 
 ```csv
@@ -158,6 +210,7 @@ timestamp,platform,first_name,last_name,email,password,status
 | File                         | Description                            |
 | ---------------------------- | -------------------------------------- |
 | `register.js`              | Xiaomi MiMo bot (Playwright)           |
+| `register_alibaba.js`      | Alibaba Cloud bot (Playwright + iframe)|
 | `register_qoder.js`        | Qoder bot (Playwright + multi-tab)     |
 | `loop.js`                  | Xiaomi loop runner with proxy rotation |
 | `tempmail.js`              | Temp email + OTP extractor (Node)      |
@@ -165,11 +218,15 @@ timestamp,platform,first_name,last_name,email,password,status
 | `captcha_puzzle_solver.py` | OpenCV puzzle captcha solver (Aliyun)  |
 | `utils/capmonster.js`      | CapMonster solver (Aliyun + ImageToText) |
 | `.env`                     | Credentials (gitignored)               |
-| `keys.csv`                 | Output data (gitignored)               |
+| `keys.csv`                 | Xiaomi + Qoder output (gitignored)     |
+| `alibaba.csv`              | Alibaba output (gitignored)            |
 
 ## Notes
 
 - Xiaomi: captcha must be solved manually (browser opens in visible mode) unless `CAPMONSTER_API_KEY` is set (ImageToText for custom captcha)
+- Alibaba: Baxia slider captcha auto-slided; second captcha after OTP waits for manual solve
+- Alibaba: form is nested in `#alibaba-register-box` iframe → `passport.alibabacloud.com` frame
+- Alibaba: use residential proxy — datacenter IPs are flagged by Alibaba
 - Qoder: captcha auto-solved via CapMonster (Aliyun slider), falls back to manual
 - Qoder: OTP uses Ant Design component (`input.ant-otp-input`, `size="1"`)
 - Qoder: Aliyun captcha (`#aliyunCaptcha-*`) — puzzle slider type
