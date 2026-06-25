@@ -150,11 +150,24 @@ async function register() {
       '--no-sandbox',
     ],
   };
+
+  const wx = process.env.WINDOW_X;
+  const wy = process.env.WINDOW_Y;
+  if (wx !== undefined && wy !== undefined) {
+    launchOpts.args.push(`--window-position=${wx},${wy}`);
+  }
+  const ww = process.env.WINDOW_WIDTH;
+  const wh = process.env.WINDOW_HEIGHT;
+  if (ww !== undefined && wh !== undefined) {
+    launchOpts.args.push(`--window-size=${ww},${wh}`);
+  }
+
   if (CONFIG.proxy) {
     launchOpts.proxy = { server: CONFIG.proxy };
     console.log(`  Proxy: ${CONFIG.proxy.split('@').pop() || CONFIG.proxy}`);
   }
   const browser = await chromium.launch(launchOpts);
+
   const contextOpts = {
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
     viewport: { width: 1366, height: 768 },

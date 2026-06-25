@@ -22,7 +22,7 @@ function run() {
   const env = { ...process.env };
   if (proxy) env.PROXY = proxy;
 
-  const child = spawn('node', ['register.js'], {
+  const child = spawn('node', ['register_alibaba.js'], {
     stdio: 'inherit',
     cwd: __dirname,
     env,

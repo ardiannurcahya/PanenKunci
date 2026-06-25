@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { sleep, rand, handleCookies, humanMouseMove, humanScroll } = require('./utils/helpers.js');
+const { solveAliyunCaptcha } = require('./utils/capmonster.js');
 
 const CONFIG = {
   registerUrl: 'https://account.alibabacloud.com/register/intl_register.htm',
@@ -20,6 +21,7 @@ const CONFIG = {
   otpTimeout: 180000,
   navigateTimeout: 30000,
   proxy: process.env.PROXY || '',
+  capmonsterApiKey: process.env.CAPMONSTER_API_KEY || '',
 };
 
 async function register() {
@@ -37,6 +39,18 @@ async function register() {
       '--disable-gpu',
     ],
   };
+
+  const wx = process.env.WINDOW_X;
+  const wy = process.env.WINDOW_Y;
+  if (wx !== undefined && wy !== undefined) {
+    launchOpts.args.push(`--window-position=${wx},${wy}`);
+  }
+  const ww = process.env.WINDOW_WIDTH;
+  const wh = process.env.WINDOW_HEIGHT;
+  if (ww !== undefined && wh !== undefined) {
+    launchOpts.args.push(`--window-size=${ww},${wh}`);
+  }
+
   if (CONFIG.proxy) {
     launchOpts.proxy = { server: CONFIG.proxy };
     console.log(`  Proxy: ${CONFIG.proxy.split('@').pop() || CONFIG.proxy}`);
@@ -54,6 +68,53 @@ async function register() {
     timezoneId: 'Asia/Jakarta',
   };
   const context = await browser.newContext(contextOpts);
+
+  // Observe AliyunCaptcha network responses for CapMonster solver
+  const capturedConfig = { sceneId: null, prefix: null };
+  const findSceneId = (text) => {
+    if (!text) return null;
+    const patterns = [
+      /["']?(?:sceneId|SceneId|captchaSceneId|CaptchaSceneId)["']?\s*:\s*["']([a-zA-Z0-9_-]{4,})["']/i,
+      /(?:sceneId|SceneId)["\s:=]+["']?([a-zA-Z0-9_-]{4,})/i,
+      /[?&](?:sceneId|SceneId|sid)=([a-zA-Z0-9_-]+)/i,
+    ];
+    for (const p of patterns) {
+      const m = text.match(p);
+      if (m) return m[1];
+    }
+    return null;
+  };
+
+  context.on('response', async (response) => {
+    try {
+      const url = response.url();
+      if (!/aliyuncs\.com|aliyunCaptcha|captcha-open/i.test(url)) return;
+
+      const prefixMatch = url.match(/https?:\/\/([a-z0-9]+)\.(?:captcha-open[a-z-]*\.)*aliyuncs\.com/i);
+      if (prefixMatch && !capturedConfig.prefix) {
+        capturedConfig.prefix = prefixMatch[1];
+        console.log(`  [observe] Aliyun prefix: ${capturedConfig.prefix}`);
+      }
+
+      const urlSid = findSceneId(url);
+      if (urlSid && !capturedConfig.sceneId) {
+        capturedConfig.sceneId = urlSid;
+        console.log(`  [observe] Aliyun sceneId (from URL): ${capturedConfig.sceneId}`);
+      }
+
+      const ct = response.headers()['content-type'] || '';
+      if (ct.includes('json') || ct.includes('text') || ct.includes('javascript') || ct.includes('html')) {
+        const body = await response.text().catch(() => '');
+        if (body) {
+          const bodySid = findSceneId(body);
+          if (bodySid && !capturedConfig.sceneId) {
+            capturedConfig.sceneId = bodySid;
+            console.log(`  [observe] Aliyun sceneId (from body): ${capturedConfig.sceneId}`);
+          }
+        }
+      }
+    } catch (_) {}
+  });
 
   // Anti-fingerprint init script
   await context.addInitScript(() => {
@@ -261,59 +322,82 @@ async function register() {
       await captchaFrame.getByText('Please slide to verify').waitFor({ state: 'visible', timeout: 15000 });
       console.log('  Slider captcha detected! Solving...');
 
-      // Human reaction: quick glance at captcha
-      await sleep(rand(800, 1500));
+      let solved = false;
+      if (CONFIG.capmonsterApiKey) {
+        console.log('  Solving via CapMonster token injection...');
+        // Find the actual iframe containing the aliyunCaptcha script/callbacks
+        const targetFrame = page.frames().find(f => f.url().includes('nocaptcha') || f.url().includes('baxia')) || page;
+        solved = await solveAliyunCaptcha(targetFrame, {
+          apiKey: CONFIG.capmonsterApiKey,
+          websiteURL: page.url(),
+          userAgent: contextOpts.userAgent,
+          networkConfig: capturedConfig,
+        });
+      }
 
-      // The slider button: <span id="nc_1_n1z" class="nc_iconfont btn_slide">
-      const slider = captchaFrame.locator('#nc_1_n1z');
-      const box = await slider.boundingBox();
-
-      if (box) {
-        const startX = box.x + box.width / 2;
-        const startY = box.y + box.height / 2;
-
-        // Get actual track width from .nc_scale container
-        const track = captchaFrame.locator('.nc_scale').first();
-        const trackBox = await track.boundingBox();
-        const trackWidth = trackBox ? trackBox.width - box.width - 5 : 350;
-
-        // Quick move to slider (not slow curve)
-        await page.mouse.move(startX, startY, { steps: rand(3, 6) });
-        await sleep(rand(150, 300));
-
-        await page.mouse.down();
-        await sleep(rand(50, 120));
-
-        // Fast, clean drag — 300-500ms total (human speed)
-        const totalSteps = rand(12, 18);
-        const duration = rand(300, 500);
-        let lastX = startX;
-
-        for (let i = 1; i <= totalSteps; i++) {
-          const progress = i / totalSteps;
-          // Simple ease-out: fast start, slight decel at end
-          const eased = 1 - Math.pow(1 - progress, 1.5);
-
-          let x = startX + trackWidth * eased + rand(-1, 1);
-          let y = startY + rand(-1, 1);
-
-          if (x > startX + trackWidth + 2) x = startX + trackWidth;
-
-          await page.mouse.move(x, y);
-          lastX = x;
-          await sleep(Math.round(duration / totalSteps));
+      if (solved) {
+        console.log('  CapMonster captcha solved successfully!');
+      } else {
+        if (CONFIG.capmonsterApiKey) {
+          console.log('  [WARN] CapMonster failed. Falling back to mouse drag simulation...');
+        } else {
+          console.log('  [WARN] CapMonster API key not configured. Using mouse drag simulation...');
         }
 
-        // Tiny overshoot + snap back (fast, natural)
-        await page.mouse.move(lastX + rand(2, 4), startY);
-        await sleep(rand(30, 60));
-        await page.mouse.move(lastX, startY);
-        await sleep(rand(40, 80));
+        // Human reaction: quick glance at captcha
+        await sleep(rand(800, 1500));
 
-        await page.mouse.up();
-        console.log('  Slider dragged!');
-      } else {
-        console.log('  [WARN] Slider bounding box not found');
+        // The slider button: <span id="nc_1_n1z" class="nc_iconfont btn_slide">
+        const slider = captchaFrame.locator('#nc_1_n1z');
+        const box = await slider.boundingBox();
+
+        if (box) {
+          const startX = box.x + box.width / 2;
+          const startY = box.y + box.height / 2;
+
+          // Get actual track width from .nc_scale container
+          const track = captchaFrame.locator('.nc_scale').first();
+          const trackBox = await track.boundingBox();
+          const trackWidth = trackBox ? trackBox.width - box.width - 5 : 350;
+
+          // Quick move to slider (not slow curve)
+          await page.mouse.move(startX, startY, { steps: rand(3, 6) });
+          await sleep(rand(150, 300));
+
+          await page.mouse.down();
+          await sleep(rand(50, 120));
+
+          // Fast, clean drag — 300-500ms total (human speed)
+          const totalSteps = rand(12, 18);
+          const duration = rand(300, 500);
+          let lastX = startX;
+
+          for (let i = 1; i <= totalSteps; i++) {
+            const progress = i / totalSteps;
+            // Simple ease-out: fast start, slight decel at end
+            const eased = 1 - Math.pow(1 - progress, 1.5);
+
+            let x = startX + trackWidth * eased + rand(-1, 1);
+            let y = startY + rand(-1, 1);
+
+            if (x > startX + trackWidth + 2) x = startX + trackWidth;
+
+            await page.mouse.move(x, y);
+            lastX = x;
+            await sleep(Math.round(duration / totalSteps));
+          }
+
+          // Tiny overshoot + snap back (fast, natural)
+          await page.mouse.move(lastX + rand(2, 4), startY);
+          await sleep(rand(30, 60));
+          await page.mouse.move(lastX, startY);
+          await sleep(rand(40, 80));
+
+          await page.mouse.up();
+          console.log('  Slider dragged!');
+        } else {
+          console.log('  [WARN] Slider bounding box not found');
+        }
       }
 
       // Wait for captcha verification
@@ -641,64 +725,82 @@ async function register() {
 
     if (needManualSolve) {
       console.log('');
-      console.log('  >>> CAPTCHA/APPEARED! Please solve it manually in the browser.');
-      console.log('  >>> Bot will auto-detect when solved. Waiting...');
+      console.log('  >>> CAPTCHA APPEARED! Attempting to solve via CapMonster...');
       console.log('');
 
-      // Poll until captcha disappears or URL changes
-      const startUrl = page.url();
-      const deadline = Date.now() + 180000; // 3 min max
-      while (Date.now() < deadline) {
-        await sleep(2000);
+      let solved = false;
+      if (CONFIG.capmonsterApiKey) {
+        const targetFrame = page.frames().find(f => f.url().includes('nocaptcha') || f.url().includes('baxia')) || page;
+        solved = await solveAliyunCaptcha(targetFrame, {
+          apiKey: CONFIG.capmonsterApiKey,
+          websiteURL: page.url(),
+          userAgent: contextOpts.userAgent,
+          networkConfig: capturedConfig,
+        });
+      }
 
-        // URL changed = registration progressed
-        if (page.url() !== startUrl) {
-          console.log('  URL changed, captcha solved!');
-          break;
-        }
+      if (solved) {
+        console.log('  CapMonster solved the post-registration captcha!');
+        needManualSolve = false;
+      } else {
+        console.log('  >>> CapMonster failed or not configured. Please solve it manually in the browser.');
+        console.log('  >>> Bot will auto-detect when solved. Waiting...');
 
-        // Check if captcha is still visible
-        let captchaGone = true;
+        // Poll until captcha disappears or URL changes
+        const startUrl = page.url();
+        const deadline = Date.now() + 180000; // 3 min max
+        while (Date.now() < deadline) {
+          await sleep(2000);
 
-        // Check Baxia slider
-        try {
-          const still = frame.frameLocator('#baxia-dialog-content').getByText('Please slide to verify');
-          if (await still.isVisible({ timeout: 500 }).catch(() => false)) {
-            captchaGone = false;
+          // URL changed = registration progressed
+          if (page.url() !== startUrl) {
+            console.log('  URL changed, captcha solved!');
+            break;
           }
-        } catch (_) {}
 
-        // Check other captcha elements
-        if (captchaGone) {
-          const checkSelectors = [
-            '[class*="captcha"]',
-            '[class*="baxia"]',
-            '[id*="nocaptcha"]',
-            '[class*="nc_scale"]',
-            '[class*="btn_slide"]',
-            '.sm-pop-inner',
-          ];
-          for (const sel of checkSelectors) {
-            const el = page.locator(sel).first();
-            if (await el.isVisible({ timeout: 300 }).catch(() => false)) {
+          // Check if captcha is still visible
+          let captchaGone = true;
+
+          // Check Baxia slider
+          try {
+            const still = frame.frameLocator('#baxia-dialog-content').getByText('Please slide to verify');
+            if (await still.isVisible({ timeout: 500 }).catch(() => false)) {
               captchaGone = false;
-              break;
+            }
+          } catch (_) {}
+
+          // Check other captcha elements
+          if (captchaGone) {
+            const checkSelectors = [
+              '[class*="captcha"]',
+              '[class*="baxia"]',
+              '[id*="nocaptcha"]',
+              '[class*="nc_scale"]',
+              '[class*="btn_slide"]',
+              '.sm-pop-inner',
+            ];
+            for (const sel of checkSelectors) {
+              const el = page.locator(sel).first();
+              if (await el.isVisible({ timeout: 300 }).catch(() => false)) {
+                captchaGone = false;
+                break;
+              }
             }
           }
-        }
 
-        // Check if still on verification form
-        if (captchaGone) {
-          const stillForm = await frame.locator('#emailCaptcha').isVisible({ timeout: 300 }).catch(() => false);
-          if (stillForm) captchaGone = false;
-        }
+          // Check if still on verification form
+          if (captchaGone) {
+            const stillForm = await frame.locator('#emailCaptcha').isVisible({ timeout: 300 }).catch(() => false);
+            if (stillForm) captchaGone = false;
+          }
 
-        if (captchaGone) {
-          console.log('  Captcha solved! Continuing...');
-          break;
-        }
+          if (captchaGone) {
+            console.log('  Captcha solved! Continuing...');
+            break;
+          }
 
-        console.log('  Still waiting for captcha...');
+          console.log('  Still waiting for captcha...');
+        }
       }
     }
 

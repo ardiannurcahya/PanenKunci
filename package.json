@@ -5,8 +5,11 @@
   "main": "register.js",
   "scripts": {
     "register": "node register.js",
+    "alibaba": "node register_alibaba.js",
     "qoder": "node register_qoder.js",
     "loop": "node loop.js",
+    "multi-loop": "node multi_loop.js",
+    "multi-loop-mimo": "node multi_loop_mimo.js",
     "tempmail": "node tempmail.js",
     "playwright:install": "npx playwright install chromium"
   },
