@@ -319,7 +319,7 @@ async function register() {
     const captchaFrame = frame.frameLocator('#baxia-dialog-content');
 
     try {
-      await captchaFrame.getByText('Please slide to verify').waitFor({ state: 'visible', timeout: 15000 });
+      await captchaFrame.getByText('Please slide to verify').waitFor({ state: 'visible', timeout: 8000 });
       console.log('  Slider captcha detected! Solving...');
 
       let solved = false;
@@ -358,7 +358,8 @@ async function register() {
           // Get actual track width from .nc_scale container
           const track = captchaFrame.locator('.nc_scale').first();
           const trackBox = await track.boundingBox();
-          const trackWidth = trackBox ? trackBox.width - box.width - 5 : 350;
+          // Calculate the exact distance to the end of the track, plus a small overshoot to guarantee it reaches the end
+          const trackWidth = trackBox ? (trackBox.x + trackBox.width) - (box.x + box.width) + rand(10, 20) : 350;
 
           // Quick move to slider (not slow curve)
           await page.mouse.move(startX, startY, { steps: rand(3, 6) });
