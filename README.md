@@ -4,11 +4,11 @@ Multi-platform automated account registration bot using Playwright + temporary e
 
 ## Supported Platforms
 
-| Platform                                        | Script                  | Command              |
-| ----------------------------------------------- | ----------------------- | -------------------- |
-| [Xiaomi MiMo API](https://platform.xiaomimimo.com) | `register.js`         | `npm run register` |
-| [Alibaba Cloud](https://account.alibabacloud.com)  | `register_alibaba.js` | `npm run alibaba`  |
-| [Qoder](https://qoder.com) (voauth 9router)        | `register_qoder.js`   | `npm run qoder`    |
+| Platform                                        | Script                  | Command                     |
+| ----------------------------------------------- | ----------------------- | --------------------------- |
+| [Xiaomi MiMo API](https://platform.xiaomimimo.com) | `register.js`         | `node multi_loop_mimo.js` |
+| [Alibaba Cloud](https://account.alibabacloud.com)  | `register_alibaba.js` | `node multi_loop.js`      |
+| [Qoder](https://qoder.com) (voauth 9router)        | `register_qoder.js`   | `node register_coder.js`  |
 
 ## Features
 

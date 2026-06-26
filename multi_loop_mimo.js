@@ -4,7 +4,7 @@ const { spawn } = require('child_process');
 // ==========================================
 // CONFIGURATION
 // ==========================================
-const CONCURRENT_WORKERS = 2; // Jumlah worker yang berjalan bersamaan
+const CONCURRENT_WORKERS = 1; // Jumlah worker yang berjalan bersamaan
 const SCREEN_WIDTH = 1920;   // Lebar layar monitor Anda
 const SCREEN_HEIGHT = 1080;  // Tinggi layar monitor Anda
 
