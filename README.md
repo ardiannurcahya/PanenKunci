@@ -4,12 +4,12 @@ Multi-platform automated account registration bots using Playwright (Node.js, Co
 
 ## Supported Platforms
 
-| Platform | Script | Command |
-|----------|--------|---------|
-| [Xiaomi MiMo](https://platform.xiaomimimo.com) | `src/bots/xiaomi/register.js` | `npm run register` |
-| [Alibaba Cloud](https://account.alibabacloud.com) | `src/bots/alibaba/register.js` | `npm run alibaba` |
-| [Qoder](https://qoder.com) | `src/bots/qoder/register.js` | `npm run qoder` |
-| [Fireworks AI](https://app.fireworks.ai) | `src/bots/fireworks/register.js` | `npm run fireworks` |
+| Platform                                         | Script                             | Command               |
+| ------------------------------------------------ | ---------------------------------- | --------------------- |
+| [Xiaomi MiMo](https://platform.xiaomimimo.com)    | `src/bots/xiaomi/register.js`    | `npm run register`  |
+| [Alibaba Cloud](https://account.alibabacloud.com) | `src/bots/alibaba/register.js`   | `npm run alibaba`   |
+| [Qoder](https://qoder.com)                        | `src/bots/qoder/register.js`     | `npm run qoder`     |
+| [Fireworks AI](https://app.fireworks.ai)          | `src/bots/fireworks/register.js` | `npm run fireworks` |
 
 ## Prerequisites
 
@@ -113,7 +113,7 @@ A base address is the disposable email prefix you create in Yahoo. For example, 
 1. Log in to your Yahoo Mail account
 2. Go to **Settings** (gear icon) → **More Settings**
 3. Click **Writing email** tab → **Disposable email addresses**
-4. Click **Create a base address** (e.g. `naidracn123`)
+4. Click **Create a base address** (e.g. nasihnjayahs)
 5. Remember this base address — you'll need it for `.env`
 
 ### Step 1: Add Yahoo Credentials to .env
@@ -123,7 +123,7 @@ Set the following in `.env`:
 ```env
 YAHOO_EMAIL=your_main_yahoo@yahoo.com
 YAHOO_PASSWORD=your_yahoo_password
-YAHOO_BASE_ADDRESS=naidracn123
+YAHOO_BASE_ADDRESS=your_base_address
 ```
 
 - `YAHOO_EMAIL` / `YAHOO_PASSWORD` — your main Yahoo account login (used by generator + verifier)
@@ -140,6 +140,7 @@ npm run fireworks-emails
 ```
 
 The script will:
+
 - Log in to Yahoo using `YAHOO_EMAIL` / `YAHOO_PASSWORD` from `.env`
 - Navigate to Settings → Mailbox → Disposable email addresses
 - Generate 100 disposable emails (keywords: `fw01`, `fw02`, ..., `fw100`)
@@ -148,6 +149,7 @@ The script will:
 - Output all emails to `data/config.json`
 
 Edit `src/bots/fireworks/generate-emails.js` to change:
+
 - `totalEmails`: number of emails to generate (default: 100)
 - `keywordPrefix`: keyword prefix (default: `fw`)
 
@@ -168,6 +170,7 @@ npm run verify
 ```
 
 The verifier will:
+
 - Log in to Yahoo Mail using `YAHOO_EMAIL` / `YAHOO_PASSWORD`
 - Monitor the unread inbox in real-time
 - Search for **all** emails from `no-reply@fireworks.ai` per cycle (not just one)
@@ -182,16 +185,19 @@ The verifier will:
 Open a **new terminal** and start registration:
 
 #### Single worker (sequential):
+
 ```bash
 npm run fireworks
 ```
 
 #### Multi-worker (5 parallel workers — recommended):
+
 ```bash
 npm run fireworks-multi
 ```
 
 For each email, the bot will:
+
 1. Open the Fireworks signup page
 2. Fill in email + auto-generated password
 3. Click "Create Account"
@@ -223,6 +229,7 @@ npm run fireworks-login
 ```
 
 The bot will:
+
 - Skip signup (go straight to login)
 - Log in with email + password from the file
 - Fill in profile + checkboxes + get credits
@@ -256,6 +263,7 @@ npm run multi-loop-mimo       # concurrent workers (tiled windows)
 ```
 
 Edit CONFIG in `src/bots/xiaomi/register.js`:
+
 - `captchaMode`: `'manual'` | `'audio'` | `'2captcha'`
 - Default: `'audio'` (uses recaptcha-solver, offline/free)
 
@@ -280,13 +288,13 @@ Modular steps in `src/bots/qoder/steps/`. Captcha: CapMonster (Aliyun slider) + 
 
 ## Output Files
 
-| Platform | File | Columns |
-|----------|------|---------|
-| Xiaomi/Qoder | `output/keys.csv` | timestamp, email, password, api_key_name, api_key |
-| Alibaba | `output/alibaba.csv` | timestamp, email, password, api_key |
-| Fireworks | `output/fireworks.csv` | email, password, apikey |
-| Fireworks multi-worker | `output/fireworks_worker_N.csv` | email, password, apikey |
-| Fireworks login-only | `output/fireworks3.csv` | email, password, apikey |
+| Platform               | File                              | Columns                                           |
+| ---------------------- | --------------------------------- | ------------------------------------------------- |
+| Xiaomi/Qoder           | `output/keys.csv`               | timestamp, email, password, api_key_name, api_key |
+| Alibaba                | `output/alibaba.csv`            | timestamp, email, password, api_key               |
+| Fireworks              | `output/fireworks.csv`          | email, password, apikey                           |
+| Fireworks multi-worker | `output/fireworks_worker_N.csv` | email, password, apikey                           |
+| Fireworks login-only   | `output/fireworks3.csv`         | email, password, apikey                           |
 
 All output files are gitignored.
 
@@ -299,3 +307,4 @@ All output files are gitignored.
 - `.env` loaded by `src/lib/env.js` (not dotenv), does NOT overwrite existing env vars
 - CommonJS throughout — use `require()`, not `import`
 - If selectors don't match, update them in the respective script
+

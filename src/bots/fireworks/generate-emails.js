@@ -26,7 +26,7 @@ async function main() {
     process.exit(1);
   }
   if (!CONFIG.baseAddress) {
-    console.error('YAHOO_BASE_ADDRESS must be set in .env (your disposable base address, e.g. naidracn123)');
+    console.error('YAHOO_BASE_ADDRESS must be set in .env (your disposable base address, e.g. nahsinjak12)');
     process.exit(1);
   }
 
