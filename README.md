@@ -1,5 +1,7 @@
 # Auto Register
 
+> **Disclaimer:** This is a personal project. The author is not responsible for any misuse of this software. Use at your own risk and in compliance with the terms of service of each platform.
+
 Multi-platform automated account registration bots using Playwright (Node.js, CommonJS) + temporary email.
 
 ## Supported Platforms
