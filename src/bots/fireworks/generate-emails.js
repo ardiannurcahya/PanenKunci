@@ -38,7 +38,7 @@ async function main() {
   console.log(`Generating ${keywords.length} disposable emails with prefix "${CONFIG.keywordPrefix}"`);
   console.log(`Keywords: ${keywords[0]} ... ${keywords[keywords.length - 1]}\n`);
 
-  const browser = await chromium.launch({ headless: false });
+  const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
   const page = await context.newPage();
 
@@ -114,11 +114,8 @@ async function main() {
       console.log(`${tag} OK: ${disposableEmail}`);
       successCount++;
 
-      // Save to config.json every 10 emails (checkpoint)
-      if ((i + 1) % 10 === 0 || i === keywords.length - 1) {
-        saveConfig(generatedEmails);
-        console.log(`${tag}   Checkpoint saved (${generatedEmails.length} emails)`);
-      }
+      // Save to config.json after every email (real-time)
+      saveConfig(generatedEmails);
 
       // Small delay between generations
       await sleep(rand(500, 1500));
