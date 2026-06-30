@@ -12,3 +12,5 @@ alibaba_documentation.txt
 AGENTS.md
 nul
 config.json
+*.csv
+config2.json

@@ -401,7 +401,7 @@ async function main() {
   for (let i = 0; i < emails.length; i++) {
     // Launch fresh browser per email
     console.log('Launching browser...');
-    const launchOpts = { headless: false };
+    const launchOpts = { headless: true };
     if (CONFIG.proxy) {
       launchOpts.proxy = { server: CONFIG.proxy };
       console.log(`  Proxy: ${CONFIG.proxy}`);

@@ -12,6 +12,7 @@
     "multi-loop-mimo": "node multi_loop_mimo.js",
     "tempmail": "node tempmail.js",
     "fireworks": "node register_fireworks.js",
+    "verify": "node verify_fireworks.js",
     "playwright:install": "npx playwright install chromium"
   },
   "keywords": [
