@@ -97,75 +97,72 @@ npm run tempmail              # Test temp email helper
 
 ## Fireworks AI — Complete Workflow
 
-Fireworks AI differs from other bots because it does **not** use temp email. It requires real Yahoo email addresses for verification. The complete workflow:
+Fireworks AI differs from other bots because it does **not** use temp email. It requires real Yahoo email addresses for verification.
 
-### Step 1: Generate Disposable Yahoo Emails
+### Prerequisites: Yahoo Plus Account
 
-Use **Yahoo Email Aliases** (Yahoo Plus) to generate disposable email addresses. All emails sent to these addresses arrive in the same main Yahoo inbox.
+You need a Yahoo Plus account with disposable email alias support. All emails sent to disposable addresses arrive in the same main Yahoo inbox.
 
-**Automated (recommended):**
+### Step 1: Add Yahoo Credentials to .env
 
-```bash
-npm run fireworks-emails
-```
-
-This script will:
-- Log in to Yahoo using `YAHOO_EMAIL` / `YAHOO_PASSWORD` from `.env`
-- Navigate to Settings → Mailbox → Disposable email addresses
-- Generate 100 disposable emails automatically (keywords: `fw01`, `fw02`, ..., `fw100`)
-- Format: `yourbaseaddress-fw01@yahoo.com`, `yourbaseaddress-fw02@yahoo.com`, etc.
-- Save checkpoint every 10 emails
-- Output all emails to `data/config.json`
-
-Edit `src/bots/fireworks/generate-emails.js` to change:
-- `totalEmails`: number of emails to generate (default: 100)
-- `keywordPrefix`: keyword prefix (default: `fw`)
-
-**Manual:**
-
-1. Log in to your main Yahoo account
-2. Go to Settings → More Settings → Writing email → Disposable email addresses
-3. Create a base address (e.g. `naidracn123`)
-4. Generate multiple disposable addresses (e.g. `naidracn123-1@yahoo.com`, `naidracn123-2@yahoo.com`, etc.)
-
-### Step 2: Prepare Config
-
-If you used the automated script, `data/config.json` is already generated. Otherwise, create it manually:
-
-```json
-{
-  "emails": "email1@yahoo.com, email2@yahoo.com, email3@yahoo.com, email4@yahoo.com"
-}
-```
-
-Set `YAHOO_EMAIL` and `YAHOO_PASSWORD` in `.env` (the main Yahoo account that receives all emails):
+Set `YAHOO_EMAIL` and `YAHOO_PASSWORD` in `.env` (your main Yahoo account):
 
 ```env
 YAHOO_EMAIL=your_main_yahoo@yahoo.com
 YAHOO_PASSWORD=your_yahoo_password
 ```
 
-### Step 3: Run Email Verifier (FIRST)
+These credentials are used by both the email generator and the email verifier.
 
-**Start the verifier BEFORE running registration** — it monitors the Yahoo inbox and auto-clicks verification links:
+### Step 2: Generate Disposable Yahoo Emails
+
+Run the email generator to automatically create 100 disposable Yahoo email addresses:
+
+```bash
+npm run fireworks-emails
+```
+
+The script will:
+- Log in to Yahoo using `YAHOO_EMAIL` / `YAHOO_PASSWORD` from `.env`
+- Navigate to Settings → Mailbox → Disposable email addresses
+- Generate 100 disposable emails (keywords: `fw01`, `fw02`, ..., `fw100`)
+- Format: `yourbaseaddress-fw01@yahoo.com`, `yourbaseaddress-fw02@yahoo.com`, etc.
+- Save checkpoint every 10 emails (merges with existing `data/config.json` if present)
+- Output all emails to `data/config.json`
+
+Edit `src/bots/fireworks/generate-emails.js` to change:
+- `totalEmails`: number of emails to generate (default: 100)
+- `keywordPrefix`: keyword prefix (default: `fw`)
+
+**Manual alternative:** Log in to Yahoo → Settings → More Settings → Writing email → Disposable email addresses → Create addresses manually → Save them to `data/config.json`:
+
+```json
+{
+  "emails": "email1@yahoo.com, email2@yahoo.com, email3@yahoo.com"
+}
+```
+
+### Step 3: Run Email Verifier (FIRST — keep running)
+
+**Start the verifier BEFORE running registration.** It monitors the Yahoo inbox and auto-clicks verification links:
 
 ```bash
 npm run verify
 ```
 
 The verifier will:
-- Log in to Yahoo Mail
+- Log in to Yahoo Mail using `YAHOO_EMAIL` / `YAHOO_PASSWORD`
 - Monitor the unread inbox in real-time
-- Search for **all** emails from `no-reply@fireworks.ai` (not just one per cycle)
+- Search for **all** emails from `no-reply@fireworks.ai` per cycle (not just one)
 - Auto-click the verification link in each email
 - Immediately re-loop if new emails are found (no delay)
 - Keep running until stopped (Ctrl+C)
 
-**Keep the verifier running in a separate terminal throughout the registration process.**
+**Keep the verifier running in a separate terminal throughout the entire registration process.**
 
 ### Step 4: Run Registration
 
-Open a new terminal and start registration:
+Open a **new terminal** and start registration:
 
 #### Single worker (sequential):
 ```bash
@@ -190,9 +187,9 @@ For each email, the bot will:
 
 Output: `output/fireworks.csv` (single) or `output/fireworks_worker_N.csv` (multi-worker)
 
-### Step 5: Fallback — Login-Only (for emails that are verified but failed to get API key)
+### Step 5: Fallback — Login-Only (for verified emails that failed to get API key)
 
-If registration fails at steps 8-9 (profile/API key) but the email is already verified, use the login-only mode:
+If registration fails at steps 6-9 (profile/API key) but the email is already verified, use login-only mode:
 
 1. Create a file `data/password.txt` in tab-separated format:
 
