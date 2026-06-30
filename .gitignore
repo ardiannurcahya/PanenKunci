@@ -5,7 +5,10 @@ keys.csv
 *.log
 .env
 alibaba.csv
+fireworks.csv
+config.json
 null
 alibaba_documentation.txt
 AGENTS.md
 nul
+config.json

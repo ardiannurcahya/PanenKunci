@@ -402,21 +402,8 @@ async function solveImageCaptcha(imgLocator, page, options) {
       // (Xiaomi uses a cache-buster param `t=random`). Drawing the already-
       // loaded <img> to a canvas captures exactly what's on screen.
       const bodyBase64 = await imgLocator.evaluate((img) => {
-        function applyGrayscaleThreshold(canvas) {
-          const ctx = canvas.getContext('2d');
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const d = imageData.data;
-          for (let i = 0; i < d.length; i += 4) {
-            const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-            const v = gray < 128 ? 0 : 255;
-            d[i] = d[i + 1] = d[i + 2] = v;
-          }
-          ctx.putImageData(imageData, 0, 0);
-        }
-
         return new Promise((resolve, reject) => {
           try {
-            // Wait for image to be fully loaded
             if (!img.complete || img.naturalWidth === 0) {
               img.onload = () => {
                 const canvas = document.createElement('canvas');
@@ -424,7 +411,6 @@ async function solveImageCaptcha(imgLocator, page, options) {
                 canvas.height = img.naturalHeight || img.height;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0);
-                applyGrayscaleThreshold(canvas);
                 resolve(canvas.toDataURL('image/png').split(',')[1] || '');
               };
               img.onerror = () => reject(new Error('Image load error'));
@@ -434,7 +420,6 @@ async function solveImageCaptcha(imgLocator, page, options) {
               canvas.height = img.naturalHeight || img.height;
               const ctx = canvas.getContext('2d');
               ctx.drawImage(img, 0, 0);
-              applyGrayscaleThreshold(canvas);
               resolve(canvas.toDataURL('image/png').split(',')[1] || '');
             }
           } catch (e) {

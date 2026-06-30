@@ -13,6 +13,7 @@ const path = require('path');
 const { findFfmpeg } = require('./utils/ffmpeg.js');
 const { sleep, rand, typeHuman, handleCookies } = require('./utils/helpers.js');
 const { solveRecaptchaWith2captcha, waitForCaptchaSolved } = require('./utils/captcha.js');
+const { solveImageCaptcha: solveImageCaptchaCapMonster } = require('./utils/capmonster.js');
 const SolveCaptcha = require('solvecaptcha-javascript');
 
 const ffmpegPath = findFfmpeg();
@@ -41,6 +42,8 @@ const CONFIG = {
   captchaApiKey: '',
   // SolveCaptcha API key for Xiaomi custom text/image captcha (2nd captcha)
   solvecaptchaApiKey: process.env.SOLVECAPTCHA_API_KEY || process.env.CAPMONSTER_API_KEY || '',
+  // CapMonster API key for custom image-to-text captcha (2nd captcha)
+  capmonsterApiKey: process.env.CAPMONSTER_API_KEY || '',
   // Proxy (optional): 'http://user:pass@host:port' or empty to disable
   proxy: process.env.PROXY || '',
 };
@@ -490,11 +493,25 @@ async function register() {
 
         if (captchaVisible) {
           const customImg = page.locator('.mi-captcha-field__image, img[src*="getCode"], img[src*="icodeType"]').first();
-          console.log('  >>> XIAOMI CUSTOM CAPTCHA DETECTED — solving with SolveCaptcha ImageToText...');
+          let solved = false;
 
-          const solved = await solveImageCaptchaWithSolveCaptcha(customImg, page, {
-            apiKey: CONFIG.solvecaptchaApiKey,
-          });
+          // Try CapMonster ImageToText first
+          if (!solved && CONFIG.capmonsterApiKey) {
+            console.log('  >>> XIAOMI CUSTOM CAPTCHA — solving with CapMonster ImageToText...');
+            solved = await solveImageCaptchaCapMonster(customImg, page, {
+              apiKey: CONFIG.capmonsterApiKey,
+              retries: 3,
+            });
+          }
+
+          // Fallback: SolveCaptcha ImageToText
+          if (!solved && CONFIG.solvecaptchaApiKey) {
+            console.log('  >>> XIAOMI CUSTOM CAPTCHA — solving with SolveCaptcha ImageToText...');
+            solved = await solveImageCaptchaWithSolveCaptcha(customImg, page, {
+              apiKey: CONFIG.solvecaptchaApiKey,
+            });
+          }
+
           if (solved) {
             console.log('  Custom captcha solved!');
             // Wait a moment and check if the main registration form's submit button is still visible.
@@ -508,7 +525,7 @@ async function register() {
               }
             }
           } else {
-            console.log('  >>> SolveCaptcha failed — solve manually within 20s or browser closes');
+            console.log('  >>> Auto-solve failed — solve manually within 40s or browser closes');
             const manualSolved = await waitForCaptchaSolved(page, 40000);
             if (!manualSolved) {
               console.log('  Timeout, closing browser');
@@ -529,6 +546,73 @@ async function register() {
     } else if (CONFIG.captchaMode === '2captcha' && CONFIG.captchaApiKey) {
       console.log('  Auto-solving captcha with 2captcha...');
       await solveRecaptchaWith2captcha(page, CONFIG.captchaApiKey);
+
+      // Handle custom 2nd captcha after reCAPTCHA
+      console.log('  Waiting for next step (custom captcha modal or OTP screen)...');
+      let captchaVisible2 = false;
+      let otpVisible2 = false;
+      const checkDeadline2 = Date.now() + 15000;
+      
+      while (Date.now() < checkDeadline2) {
+        const customImg = page.locator('.mi-captcha-field__image, img[src*="getCode"], img[src*="icodeType"]').first();
+        if (await customImg.isVisible({ timeout: 500 }).catch(() => false)) {
+          captchaVisible2 = true;
+          break;
+        }
+        const otpInput = page.locator('input[maxlength="6"], input[maxlength="4"], input[type="number"], input[placeholder*="code" i], input[placeholder*="OTP" i], input[placeholder*="verif" i]').first();
+        if (await otpInput.isVisible({ timeout: 500 }).catch(() => false)) {
+          otpVisible2 = true;
+          break;
+        }
+        await sleep(500);
+      }
+
+      if (captchaVisible2) {
+        const customImg = page.locator('.mi-captcha-field__image, img[src*="getCode"], img[src*="icodeType"]').first();
+        let solved = false;
+
+        // Try CapMonster ImageToText first
+        if (!solved && CONFIG.capmonsterApiKey) {
+          console.log('  >>> XIAOMI CUSTOM CAPTCHA — solving with CapMonster ImageToText...');
+          solved = await solveImageCaptchaCapMonster(customImg, page, {
+            apiKey: CONFIG.capmonsterApiKey,
+            retries: 3,
+          });
+        }
+
+        // Fallback: SolveCaptcha ImageToText
+        if (!solved && CONFIG.solvecaptchaApiKey) {
+          console.log('  >>> XIAOMI CUSTOM CAPTCHA — solving with SolveCaptcha ImageToText...');
+          solved = await solveImageCaptchaWithSolveCaptcha(customImg, page, {
+            apiKey: CONFIG.solvecaptchaApiKey,
+          });
+        }
+
+        if (solved) {
+          console.log('  Custom captcha solved!');
+          await sleep(2000);
+          const submitBtn = page.locator('button[type="submit"], button:has-text("Register"), button:has-text("Next"), button:has-text("Create"), a:has-text("Register")').first();
+          if (await submitBtn.isVisible().catch(() => false)) {
+            if (await submitBtn.isEnabled().catch(() => false)) {
+              console.log('  Form not submitted automatically. Clicking main Next/Submit button again...');
+              await submitBtn.click();
+              await sleep(2000);
+            }
+          }
+        } else {
+          console.log('  >>> Auto-solve failed — solve manually within 40s or browser closes');
+          const manualSolved = await waitForCaptchaSolved(page, 40000);
+          if (!manualSolved) {
+            console.log('  Timeout, closing browser');
+            await browser.close();
+            process.exit(0);
+          }
+        }
+      } else if (otpVisible2) {
+        console.log('  Directly advanced to OTP screen, no custom captcha needed.');
+      } else {
+        console.log('  [WARN] Neither custom captcha nor OTP screen detected after 15s.');
+      }
     } else {
       console.log('  >>> CAPTCHA: Please solve the captcha manually in the browser.');
       console.log('  >>> Auto-detecting when solved...');
