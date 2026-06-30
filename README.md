@@ -89,6 +89,7 @@ npm run loop                  # Xiaomi loop mode (proxy rotation)
 npm run verify                # Fireworks email verifier (Yahoo inbox monitor)
 
 # Utilities
+npm run fireworks-emails      # Generate 100 disposable Yahoo emails → data/config.json
 npm run tempmail              # Test temp email helper
 ```
 
@@ -100,17 +101,36 @@ Fireworks AI differs from other bots because it does **not** use temp email. It 
 
 ### Step 1: Generate Disposable Yahoo Emails
 
-Use **Yahoo Email Aliases** (Yahoo Plus) to generate disposable email addresses:
+Use **Yahoo Email Aliases** (Yahoo Plus) to generate disposable email addresses. All emails sent to these addresses arrive in the same main Yahoo inbox.
+
+**Automated (recommended):**
+
+```bash
+npm run fireworks-emails
+```
+
+This script will:
+- Log in to Yahoo using `YAHOO_EMAIL` / `YAHOO_PASSWORD` from `.env`
+- Navigate to Settings → Mailbox → Disposable email addresses
+- Generate 100 disposable emails automatically (keywords: `fw01`, `fw02`, ..., `fw100`)
+- Format: `yourbaseaddress-fw01@yahoo.com`, `yourbaseaddress-fw02@yahoo.com`, etc.
+- Save checkpoint every 10 emails
+- Output all emails to `data/config.json`
+
+Edit `src/bots/fireworks/generate-emails.js` to change:
+- `totalEmails`: number of emails to generate (default: 100)
+- `keywordPrefix`: keyword prefix (default: `fw`)
+
+**Manual:**
 
 1. Log in to your main Yahoo account
 2. Go to Settings → More Settings → Writing email → Disposable email addresses
 3. Create a base address (e.g. `naidracn123`)
 4. Generate multiple disposable addresses (e.g. `naidracn123-1@yahoo.com`, `naidracn123-2@yahoo.com`, etc.)
-5. All emails sent to these addresses arrive in the same main Yahoo inbox
 
 ### Step 2: Prepare Config
 
-Save the email list in `data/config.json`:
+If you used the automated script, `data/config.json` is already generated. Otherwise, create it manually:
 
 ```json
 {
