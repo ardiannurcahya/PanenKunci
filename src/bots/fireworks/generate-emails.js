@@ -146,9 +146,20 @@ async function main() {
   await browser.close();
 }
 
-function saveConfig(emails) {
+function saveConfig(newEmails) {
+  let existingEmails = [];
+  if (fs.existsSync(CONFIG.outputFile)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(CONFIG.outputFile, 'utf8'));
+      existingEmails = raw.emails
+        .split(',')
+        .map(e => e.trim())
+        .filter(e => e.length > 0);
+    } catch (_) {}
+  }
+  const merged = [...new Set([...existingEmails, ...newEmails])];
   const config = {
-    emails: emails.join(', '),
+    emails: merged.join(', '),
   };
   fs.writeFileSync(CONFIG.outputFile, JSON.stringify(config, null, 2) + '\n', 'utf8');
 }
