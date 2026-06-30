@@ -6,7 +6,7 @@ const path = require('path');
 // ==========================================
 // CONFIGURATION
 // ==========================================
-const CONCURRENT_WORKERS = 5;
+const CONCURRENT_WORKERS = 1;
 
 // List proxy untuk rotasi (opsional). Kosongkan array jika tidak pakai proxy.
 const PROXIES = [

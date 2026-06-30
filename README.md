@@ -65,6 +65,7 @@ PROXY=http://user:pass@host:port
 SOLVECAPTCHA_API_KEY=your_solvecaptcha_key
 YAHOO_EMAIL=your_yahoo_email
 YAHOO_PASSWORD=your_yahoo_password
+YAHOO_BASE_ADDRESS=your_disposable_base_address
 ```
 
 ## Commands
@@ -99,20 +100,36 @@ npm run tempmail              # Test temp email helper
 
 Fireworks AI differs from other bots because it does **not** use temp email. It requires real Yahoo email addresses for verification.
 
-### Prerequisites: Yahoo Plus Account
+### Prerequisites: Yahoo Plus & Disposable Email Setup
 
-You need a Yahoo Plus account with disposable email alias support. All emails sent to disposable addresses arrive in the same main Yahoo inbox.
+You need a Yahoo account with **disposable email address** support. This is a Yahoo Plus feature that lets you create alias addresses — all emails sent to these aliases arrive in your main Yahoo inbox.
+
+**What is a base address?**
+
+A base address is the disposable email prefix you create in Yahoo. For example, if your base address is `naidracn123`, you can generate aliases like `naidracn123-fw01@yahoo.com`, `naidracn123-fw02@yahoo.com`, etc. All of these arrive in your main Yahoo inbox.
+
+**How to set up (one-time, manual):**
+
+1. Log in to your Yahoo Mail account
+2. Go to **Settings** (gear icon) → **More Settings**
+3. Click **Writing email** tab → **Disposable email addresses**
+4. Click **Create a base address** (e.g. `naidracn123`)
+5. Remember this base address — you'll need it for `.env`
 
 ### Step 1: Add Yahoo Credentials to .env
 
-Set `YAHOO_EMAIL` and `YAHOO_PASSWORD` in `.env` (your main Yahoo account):
+Set the following in `.env`:
 
 ```env
 YAHOO_EMAIL=your_main_yahoo@yahoo.com
 YAHOO_PASSWORD=your_yahoo_password
+YAHOO_BASE_ADDRESS=naidracn123
 ```
 
-These credentials are used by both the email generator and the email verifier.
+- `YAHOO_EMAIL` / `YAHOO_PASSWORD` — your main Yahoo account login (used by generator + verifier)
+- `YAHOO_BASE_ADDRESS` — the disposable base address you created in Yahoo (without `@yahoo.com`)
+
+The generator uses `YAHOO_BASE_ADDRESS` to construct disposable emails like `{baseAddress}-fw01@yahoo.com`.
 
 ### Step 2: Generate Disposable Yahoo Emails
 

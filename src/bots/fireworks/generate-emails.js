@@ -10,6 +10,7 @@ const { sleep, rand } = require('../../lib/helpers');
 const CONFIG = {
   yahooEmail: process.env.YAHOO_EMAIL || '',
   yahooPassword: process.env.YAHOO_PASSWORD || '',
+  baseAddress: process.env.YAHOO_BASE_ADDRESS || '',
   totalEmails: 100,
   keywordPrefix: 'fw',
   outputFile: path.join(__dirname, '../../../data/config.json'),
@@ -22,6 +23,10 @@ async function main() {
 
   if (!CONFIG.yahooEmail || !CONFIG.yahooPassword) {
     console.error('YAHOO_EMAIL and YAHOO_PASSWORD must be set in .env');
+    process.exit(1);
+  }
+  if (!CONFIG.baseAddress) {
+    console.error('YAHOO_BASE_ADDRESS must be set in .env (your disposable base address, e.g. naidracn123)');
     process.exit(1);
   }
 
@@ -102,9 +107,8 @@ async function main() {
       await sleep(rand(1000, 2000));
 
       // Construct the disposable email address
-      // Format: baseaddress-keyword@yahoo.com
-      const baseAddress = CONFIG.yahooEmail.split('@')[0];
-      const disposableEmail = `${baseAddress}-${keyword}@yahoo.com`;
+      // Format: baseAddress-keyword@yahoo.com
+      const disposableEmail = `${CONFIG.baseAddress}-${keyword}@yahoo.com`;
       generatedEmails.push(disposableEmail);
 
       console.log(`${tag} OK: ${disposableEmail}`);
