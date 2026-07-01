@@ -1,6 +1,7 @@
 const { spawn } = require('child_process');
 const { chromium } = require('playwright-extra');
 const stealth = require('puppeteer-extra-plugin-stealth')();
+const { chromium: plainChromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
 
@@ -21,6 +22,12 @@ const CONFIG = {
   chromeDebugPort: 9222,
   profileDir: path.join(__dirname, '../../../output/chrome-cf-profile'),
   navigateTimeout: 30000,
+  // Yahoo verification
+  yahooEmail: process.env.YAHOO_EMAIL || '',
+  yahooPassword: process.env.YAHOO_PASSWORD || '',
+  yahooBaseAddress: process.env.YAHOO_BASE_ADDRESS || '',
+  emailWaitMs: 180000,       // 3 minutes max to wait for Cloudflare email
+  emailPollMs: 5000,         // poll Yahoo inbox every 5s
 };
 
 // ─── CSV writer (4 columns: email,password,account_id,status) ──
@@ -166,9 +173,193 @@ const FETCH_INTERCEPTOR = (token) => `
 })();
 `;
 
+// ─── clickTurnstile: find Turnstile frame and click checkbox ──
+async function clickTurnstile(page, opts = {}) {
+  const { timeoutS = 60, waitS = 30 } = opts;
+
+  let turnstileFrame = null;
+  for (let i = 0; i < timeoutS; i++) {
+    for (const frame of page.frames()) {
+      const url = frame.url();
+      if (url.includes('challenges.cloudflare.com') && url.includes('turnstile')) {
+        turnstileFrame = frame;
+        break;
+      }
+    }
+    if (turnstileFrame) break;
+    await sleep(1000);
+  }
+  if (!turnstileFrame) return false;
+
+  try {
+    const frameElement = await turnstileFrame.frameElement();
+    const box = await frameElement.boundingBox();
+    if (!box) return false;
+
+    const clickX = box.x + 30 + rand(-5, 5);
+    const clickY = box.y + box.height / 2 + rand(-3, 3);
+
+    await page.mouse.move(clickX - 100, clickY - 40, { steps: 5 });
+    await sleep(rand(200, 500));
+    await page.mouse.move(clickX, clickY, { steps: 10 });
+    await sleep(rand(300, 800));
+    await page.mouse.click(clickX, clickY);
+
+    for (let i = 0; i < waitS; i++) {
+      await sleep(2000);
+      const submitBtn = page.locator('button[data-testid="signup-submit-button"]').first();
+      if (await submitBtn.isVisible({ timeout: 200 }).catch(() => false)) {
+        if (await submitBtn.isEnabled({ timeout: 200 }).catch(() => false)) return true;
+      }
+      const currentUrl = page.url();
+      if (!currentUrl.includes('sign-up') && !currentUrl.includes('email-verification')) return true;
+      const verifyBtn = page.locator('button:has-text("Verify"), button:has-text("Continue"), button:has-text("Confirm")').first();
+      if (await verifyBtn.isVisible({ timeout: 200 }).catch(() => false)) {
+        if (await verifyBtn.isEnabled({ timeout: 200 }).catch(() => false)) return true;
+      }
+    }
+
+    // Retry click
+    await sleep(500);
+    await page.mouse.click(clickX + rand(-3, 3), clickY + rand(-3, 3));
+    for (let i = 0; i < 15; i++) {
+      await sleep(2000);
+      const submitBtn = page.locator('button[data-testid="signup-submit-button"]').first();
+      if (await submitBtn.isVisible({ timeout: 200 }).catch(() => false)) {
+        if (await submitBtn.isEnabled({ timeout: 200 }).catch(() => false)) return true;
+      }
+      const currentUrl = page.url();
+      if (!currentUrl.includes('sign-up') && !currentUrl.includes('email-verification')) return true;
+      const verifyBtn = page.locator('button:has-text("Verify"), button:has-text("Continue"), button:has-text("Confirm")').first();
+      if (await verifyBtn.isVisible({ timeout: 200 }).catch(() => false)) {
+        if (await verifyBtn.isEnabled({ timeout: 200 }).catch(() => false)) return true;
+      }
+    }
+  } catch (_) {}
+  return false;
+}
+
+// ─── getVerificationLinkFromYahoo: extract Cloudflare verification URL ──
+async function getVerificationLinkFromYahoo(targetEmail) {
+  if (!CONFIG.yahooEmail || !CONFIG.yahooPassword) {
+    console.log('  YAHOO_EMAIL/YAHOO_PASSWORD not set in .env — skipping auto verification.');
+    return null;
+  }
+
+  console.log('  Launching headless browser for Yahoo Mail...');
+  const yahooBrowser = await plainChromium.launch({ headless: true });
+  let verifyUrl = null;
+
+  try {
+    const yahooContext = await yahooBrowser.newContext();
+    const yahooPage = await yahooContext.newPage();
+
+    console.log('  Logging in to Yahoo...');
+    await yahooPage.goto('https://login.yahoo.com/', { waitUntil: 'load', timeout: 30000 });
+    await sleep(rand(3000, 5000));
+
+    await yahooPage.getByRole('textbox', { name: 'Username, email or phone' }).fill(CONFIG.yahooEmail);
+    await sleep(rand(500, 1000));
+    await yahooPage.getByRole('button', { name: 'Next' }).click();
+    await sleep(rand(2000, 4000));
+
+    await yahooPage.getByRole('textbox', { name: 'Password' }).click();
+    await sleep(rand(300, 600));
+    await yahooPage.getByRole('textbox', { name: 'Password' }).fill(CONFIG.yahooPassword);
+    await sleep(rand(500, 1000));
+    await yahooPage.getByRole('button', { name: 'Next' }).click();
+    await sleep(rand(3000, 6000));
+
+    await yahooPage.getByRole('button', { name: 'Lewati' }).click().catch(() => {});
+    await sleep(rand(2000, 4000));
+
+    console.log('  Opening Yahoo inbox...');
+    const inboxPromise = yahooPage.waitForEvent('popup');
+    await yahooPage.getByRole('link', { name: 'Check your mail' }).click();
+    const inbox = await inboxPromise;
+    await sleep(rand(5000, 8000));
+
+    console.log('  Searching for Cloudflare emails...');
+    const searchUrl = 'https://mail.yahoo.com/n/search/keyword=cloudflare?src=ym&reason=myc';
+    await inbox.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+    await sleep(rand(5000, 8000));
+
+    const deadline = Date.now() + CONFIG.emailWaitMs;
+    while (Date.now() < deadline) {
+      console.log('  Checking for Cloudflare email...');
+
+      const emailLink = inbox.locator('a[href*="cloudflare"], [data-test*="cloudflare"], *:has-text("cloudflare")').first();
+      const found = await emailLink.isVisible({ timeout: 2000 }).catch(() => false);
+
+      if (found) {
+        console.log('  Cloudflare email found! Opening...');
+        await emailLink.click();
+        await sleep(rand(3000, 5000));
+
+        const verifyLink = inbox.locator('a[href*="dash.cloudflare.com/email-verification"]').first();
+        const href = await verifyLink.getAttribute('href').catch(() => null);
+
+        if (href && href.includes('email-verification')) {
+          verifyUrl = href;
+          console.log(`  Verification URL found: ${href.slice(0, 80)}...`);
+          break;
+        }
+
+        const allLinks = await inbox.locator('a[href*="email-verification"]').all();
+        for (const link of allLinks) {
+          const h = await link.getAttribute('href').catch(() => null);
+          if (h && h.includes('dash.cloudflare.com')) {
+            verifyUrl = h;
+            console.log(`  Verification URL found (fallback): ${h.slice(0, 80)}...`);
+            break;
+          }
+        }
+        if (verifyUrl) break;
+
+        const bodyText = await inbox.locator('body').textContent().catch(() => '');
+        const match = bodyText.match(/https:\/\/dash\.cloudflare\.com\/email-verification\?token=[^\s"'<>]+/);
+        if (match) {
+          verifyUrl = match[0];
+          console.log(`  Verification URL found (text): ${verifyUrl.slice(0, 80)}...`);
+          break;
+        }
+
+        console.log('  Email opened but no verification link found. Will retry...');
+        await inbox.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+        await sleep(rand(3000, 5000));
+      } else {
+        const senderLink = inbox.locator('*:has-text("Cloudflare")').first();
+        const senderFound = await senderLink.isVisible({ timeout: 1000 }).catch(() => false);
+        if (senderFound) {
+          console.log('  Found Cloudflare sender reference, clicking...');
+          await senderLink.click();
+          await sleep(rand(3000, 5000));
+          const verifyLink = inbox.locator('a[href*="email-verification"]').first();
+          const href = await verifyLink.getAttribute('href').catch(() => null);
+          if (href) {
+            verifyUrl = href;
+            console.log(`  Verification URL found: ${href.slice(0, 80)}...`);
+            break;
+          }
+        }
+      }
+
+      console.log(`  No Cloudflare email yet. Waiting ${CONFIG.emailPollMs / 1000}s...`);
+      await sleep(CONFIG.emailPollMs);
+      await inbox.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+      await sleep(rand(3000, 5000));
+    }
+  } catch (e) {
+    console.log(`  Yahoo error: ${e.message}`);
+  } finally {
+    await yahooBrowser.close();
+  }
+
+  return verifyUrl;
+}
 // ─── MAIN ─────────────────────────────────────────────────
 async function main() {
-  console.log('=== Cloudflare Auto-Registration Bot (Phase 1) ===\n');
+  console.log('=== Cloudflare Auto-Registration Bot (Phase 2) ===\n');
 
   // Determine email — from CLI arg or first unused from config.json
   const email = process.argv[2] || getNextEmail();
@@ -498,29 +689,163 @@ async function main() {
   }
 
   // ─── Step 8: Save results ─────────────────────────────
-  console.log('[8/8] Saving results...');
+  console.log('[8/10] Saving registration results...');
   if (accountId) {
     saveCloudflareCsv(CONFIG.outputFile, email, password, accountId, 'registered');
   } else {
-    // Only save on success — don't mark email as used if registration failed
     console.log('  Registration failed — email NOT marked as used. Can retry.');
+  }
+
+  // ─── Step 9: Get verification link from Yahoo ─────────
+  let verified = false;
+  if (accountId) {
+    console.log('[9/10] Verifying email via Yahoo...');
+    const verifyUrl = await getVerificationLinkFromYahoo(email);
+
+    if (verifyUrl) {
+      // ─── Step 10: Open verification link + handle Turnstile ──
+      console.log('[10/10] Opening verification link in main browser...');
+      try {
+        // Open verification URL in a new tab (same browser = same Cloudflare session)
+        const verifyPage = await context.newPage();
+        console.log(`  Navigating to: ${verifyUrl.slice(0, 80)}...`);
+        await verifyPage.goto(verifyUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await sleep(3000);
+
+        // The verification page may have a Turnstile captcha
+        // Check if there's a Turnstile frame
+        let hasTurnstile = false;
+        for (const frame of verifyPage.frames()) {
+          if (frame.url().includes('challenges.cloudflare.com') && frame.url().includes('turnstile')) {
+            hasTurnstile = true;
+            break;
+          }
+        }
+
+        if (hasTurnstile) {
+          console.log('  Turnstile detected on verification page. Solving...');
+          const solved = await clickTurnstile(verifyPage, { timeoutS: 30, waitS: 30 });
+          console.log(`  Turnstile solve result: ${solved}`);
+
+          if (solved) {
+            // Look for a "Verify" or "Continue" button to click
+            const verifyBtn = verifyPage.locator('button:has-text("Verify"), button:has-text("Continue"), button:has-text("Confirm"), button[type="submit"]').first();
+            if (await verifyBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+              if (await verifyBtn.isEnabled({ timeout: 1000 }).catch(() => false)) {
+                await verifyBtn.click();
+                console.log('  Clicked verify button.');
+              }
+            }
+          } else {
+            // Fallback: wait for manual solve
+            console.log('  >>> KLIK CAPTCHA MANUAL DI CHROME <<<');
+            for (let i = 0; i < 60; i++) {
+              await sleep(2000);
+              if (!verifyPage.url().includes('email-verification')) {
+                console.log('  Verification page navigated — likely solved.');
+                break;
+              }
+            }
+          }
+        } else {
+          console.log('  No Turnstile on verification page. Checking for verify button...');
+          // Page might auto-verify or have a button to click
+          const verifyBtn = verifyPage.locator('button:has-text("Verify"), button:has-text("Continue"), button:has-text("Confirm"), button[type="submit"]').first();
+          if (await verifyBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+            await verifyBtn.click();
+            console.log('  Clicked verify button.');
+          }
+        }
+
+        // Wait for verification to complete
+        // Success indicators: URL changes to /{accountId}/home or PUT /api/v4/user/email-verification returns 200
+        console.log('  Waiting for verification to complete...');
+        for (let i = 0; i < 30; i++) {
+          await sleep(2000);
+          const currentUrl = verifyPage.url();
+          // Check if redirected to dashboard
+          if (currentUrl.match(/dash\.cloudflare\.com\/[a-f0-9]{32}\/home/)) {
+            verified = true;
+            console.log('  Email verified! Redirected to dashboard.');
+            break;
+          }
+          // Check for success message
+          const successEl = verifyPage.locator('text*="verified", text*="success", text*="confirmed"').first();
+          const successText = await successEl.textContent({ timeout: 500 }).catch(() => '');
+          if (successText && /verif|success|confirm/i.test(successText)) {
+            verified = true;
+            console.log('  Email verified! Success message found.');
+            break;
+          }
+          if (i % 5 === 4) console.log(`  Still waiting... (${i + 1}/30)`);
+        }
+
+        // Also check main page (dashboard) — sometimes verification updates the session
+        if (!verified) {
+          const mainUrl = page.url();
+          if (mainUrl.match(/dash\.cloudflare\.com\/[a-f0-9]{32}\/home/)) {
+            // Check if email_verified flag changed by reloading
+            await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+            await sleep(3000);
+          }
+        }
+
+        await verifyPage.close().catch(() => {});
+      } catch (e) {
+        console.log(`  Verification page error: ${e.message}`);
+      }
+    } else {
+      console.log('  No verification link found in Yahoo. Manual verification needed.');
+    }
+
+    // Update CSV status
+    if (verified) {
+      // Update the CSV row to 'verified'
+      try {
+        const content = fs.readFileSync(CONFIG.outputFile, 'utf8');
+        const lines = content.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].includes(email) && lines[i].includes('registered')) {
+            lines[i] = lines[i].replace('registered', 'verified');
+            break;
+          }
+        }
+        fs.writeFileSync(CONFIG.outputFile, lines.join('\n'), 'utf8');
+        console.log('  CSV updated: status = verified');
+      } catch (e) {
+        console.log(`  CSV update error: ${e.message}`);
+      }
+    }
+  } else {
+    console.log('[9/10] Skipping verification — registration failed.');
+    console.log('[10/10] Skipping verification — registration failed.');
   }
 
   // ─── Result ───────────────────────────────────────────
   console.log('');
   console.log('========================================');
-  if (accountId) {
-    console.log('  REGISTRATION SUCCESSFUL!');
+  if (accountId && verified) {
+    console.log('  REGISTRATION + VERIFICATION SUCCESSFUL!');
     console.log('  ========================================');
     console.log(`  Email:      ${email}`);
     console.log(`  Password:   ${password}`);
     console.log(`  Account ID: ${accountId}`);
+    console.log(`  Status:     verified`);
+    console.log(`  Saved to:   ${CONFIG.outputFile}`);
+    console.log('');
+    console.log('  Chrome tetap terbuka. Tekan Ctrl+C untuk keluar.');
+  } else if (accountId) {
+    console.log('  REGISTRATION SUCCESSFUL (email not verified)');
+    console.log('  ========================================');
+    console.log(`  Email:      ${email}`);
+    console.log(`  Password:   ${password}`);
+    console.log(`  Account ID: ${accountId}`);
+    console.log(`  Status:     registered (needs verification)`);
     console.log(`  Saved to:   ${CONFIG.outputFile}`);
     console.log('');
     console.log('  >>> VERIFIKASI EMAIL MANUAL <<<');
-    console.log('  Buka email Yahoo Anda, klik link verifikasi Cloudflare.');
-    console.log('  Chrome tetap terbuka untuk verifikasi manual.');
-    console.log('  Tekan Ctrl+C untuk keluar setelah selesai.');
+    console.log('  Buka email Yahoo, klik link verifikasi Cloudflare.');
+    console.log('  Tekan Ctrl+C untuk keluar.');
   } else {
     console.log('  REGISTRATION FAILED');
     console.log('  ========================================');
@@ -535,7 +860,7 @@ async function main() {
   console.log('========================================');
   console.log('');
 
-  // Keep Chrome open for manual verification / debugging
+  // Keep Chrome open
   let saved = false;
   const cleanup = async () => {
     if (saved) return;
