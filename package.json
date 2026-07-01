@@ -16,6 +16,7 @@
     "multi-loop": "node src/bots/alibaba/multi-loop.js",
     "multi-loop-mimo": "node src/bots/xiaomi/multi-loop.js",
     "tempmail": "node src/lib/tempmail.js",
+    "cloudflare": "node src/bots/cloudflare/register.js",
     "playwright:install": "npx playwright install chromium"
   },
   "keywords": [
