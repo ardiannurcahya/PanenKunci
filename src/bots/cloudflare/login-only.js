@@ -6,6 +6,7 @@ const fs = require('fs');
 
 const { loadEnv } = require('../../lib/env');
 const { sleep, rand, fillHuman } = require('../../lib/helpers');
+const { createApiKey } = require('./get-api-key');
 
 loadEnv();
 chromium.use(stealth);
@@ -20,8 +21,9 @@ const CONFIG = {
   navigateTimeout: 30000,
   yahooEmail: process.env.YAHOO_EMAIL || '',
   yahooPassword: process.env.YAHOO_PASSWORD || '',
-  emailWaitMs: 180000,
-  emailPollMs: 5000,
+  emailWaitMs: 300000,
+  emailPollMs: 10000,
+  emailInitialWaitMs: 15000,
 };
 
 // ─── HELPERS ──────────────────────────────────────────────
@@ -156,67 +158,83 @@ async function getVerificationLinkFromYahoo(context) {
   try {
     yahooPage = await context.newPage();
 
-    console.log('  Logging in to Yahoo...');
-    await yahooPage.goto('https://login.yahoo.com/', { waitUntil: 'load', timeout: 30000 });
+    // Go directly to unread inbox URL — if already logged in (persistent profile),
+    // we'll land in the unread inbox and can skip login entirely.
+    const unreadUrl = 'https://mail.yahoo.com/n/search/referrer=unread&keyword=is%253Aunread&accountIds=1&excludefolders=ARCHIVE?src=ym&reason=myc';
+    console.log('  Checking Yahoo Mail session (unread inbox)...');
+    await yahooPage.goto(unreadUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await sleep(rand(3000, 5000));
 
-    await yahooPage.getByRole('textbox', { name: 'Username, email or phone' }).fill(CONFIG.yahooEmail);
-    await sleep(rand(500, 1000));
-    await yahooPage.getByRole('button', { name: 'Next' }).click();
-    await sleep(rand(2000, 4000));
-
-    await yahooPage.getByRole('textbox', { name: 'Password' }).click();
-    await sleep(rand(300, 600));
-    await yahooPage.getByRole('textbox', { name: 'Password' }).fill(CONFIG.yahooPassword);
-    await sleep(rand(500, 1000));
-    await yahooPage.getByRole('button', { name: 'Next' }).click();
-    await sleep(rand(3000, 6000));
-
-    // Skip recovery prompt
-    await yahooPage.getByRole('button', { name: 'Lewati' }).click().catch(() => {});
-    await sleep(rand(2000, 4000));
-
-    // Open inbox — might open as popup or navigate in same page
-    console.log('  Opening Yahoo inbox...');
     let inbox = yahooPage;
+    const currentUrl = yahooPage.url();
 
-    // Check if "Check your mail" link exists (opens popup)
-    const checkMailLink = yahooPage.getByRole('link', { name: 'Check your mail' });
-    if (await checkMailLink.isVisible({ timeout: 3000 }).catch(() => false)) {
-      const inboxPromise = yahooPage.waitForEvent('popup');
-      await checkMailLink.click();
-      inbox = await inboxPromise;
-    }
-    // Fallback: navigate directly to mail
-    if (inbox.url() !== yahooPage.url() || !inbox.url().includes('mail.yahoo.com')) {
-      await inbox.goto('https://mail.yahoo.com/', { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
-    }
-    await sleep(rand(5000, 8000));
-    console.log(`  Yahoo inbox: ${inbox.url().slice(0, 60)}`);
+    if (currentUrl.includes('mail.yahoo.com') && !currentUrl.includes('login.yahoo.com')) {
+      // Already logged in — already on unread inbox!
+      console.log('  Yahoo session active — skipping login.');
+    } else {
+      // Need to login
+      console.log('  Yahoo session expired — logging in...');
+      await yahooPage.goto('https://login.yahoo.com/', { waitUntil: 'load', timeout: 30000 });
+      await sleep(rand(3000, 5000));
 
-    // Search for Cloudflare emails
-    console.log('  Searching for Cloudflare emails...');
-    const searchUrl = 'https://mail.yahoo.com/n/search/keyword=cloudflare?src=ym&reason=myc';
-    await inbox.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
-    await sleep(rand(5000, 8000));
+      await yahooPage.getByRole('textbox', { name: 'Username, email or phone' }).fill(CONFIG.yahooEmail);
+      await sleep(rand(500, 1000));
+      await yahooPage.getByRole('button', { name: 'Next' }).click();
+      await sleep(rand(2000, 4000));
+
+      await yahooPage.getByRole('textbox', { name: 'Password' }).click();
+      await sleep(rand(300, 600));
+      await yahooPage.getByRole('textbox', { name: 'Password' }).fill(CONFIG.yahooPassword);
+      await sleep(rand(500, 1000));
+      await yahooPage.getByRole('button', { name: 'Next' }).click();
+      await sleep(rand(3000, 6000));
+
+      await yahooPage.getByRole('button', { name: 'Lewati' }).click().catch(() => {});
+      await sleep(rand(2000, 4000));
+
+      // Open inbox
+      const checkMailLink = yahooPage.getByRole('link', { name: 'Check your mail' });
+      if (await checkMailLink.isVisible({ timeout: 3000 }).catch(() => false)) {
+        const inboxPromise = yahooPage.waitForEvent('popup');
+        await checkMailLink.click();
+        inbox = await inboxPromise;
+      }
+      // Navigate to unread inbox
+      await inbox.goto(unreadUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+    }
+    await sleep(rand(3000, 5000));
+    console.log(`  Yahoo unread inbox: ${inbox.url().slice(0, 60)}`);
+
+    // Wait before first check — give Cloudflare time to send the email
+    console.log(`  Waiting ${CONFIG.emailInitialWaitMs / 1000}s for Cloudflare email to arrive...`);
+    await sleep(CONFIG.emailInitialWaitMs);
 
     const deadline = Date.now() + CONFIG.emailWaitMs;
     while (Date.now() < deadline) {
-      console.log('  Checking for Cloudflare email...');
+      console.log('  Checking unread inbox for Cloudflare email...');
 
-      // Try to find Cloudflare email — use multiple strategies
-      const emailSelectors = [
-        'a[href*="cloudflare"]',
-        '[data-test*="cloudflare"]',
-        'div:has-text("cloudflare"):not(:has(div:has-text("cloudflare")))',
+      // In unread inbox, find email list items that mention "Cloudflare"
+      // Yahoo Mail renders each email as a row/list-item. We look for rows
+      // containing "Cloudflare" text (sender name or subject) and click those.
+      // This avoids clicking on unrelated unread emails.
+      let found = false;
+
+      // Strategy 1: Yahoo email rows containing "Cloudflare" in sender/subject
+      const rowSelectors = [
+        '[data-test="message-item"]:has-text("Cloudflare")',
+        '[data-testid="message-item"]:has-text("Cloudflare")',
+        'li:has-text("Cloudflare")',
+        'tr:has-text("Cloudflare")',
+        '[role="listitem"]:has-text("Cloudflare")',
+        '[role="row"]:has-text("Cloudflare")',
+        'div[data-test-id]:has-text("Cloudflare")',
       ];
 
-      let found = false;
-      for (const sel of emailSelectors) {
+      for (const sel of rowSelectors) {
         try {
           const loc = inbox.locator(sel).first();
           if (await loc.isVisible({ timeout: 1000 }).catch(() => false)) {
-            console.log(`  Cloudflare email found via: ${sel}`);
+            console.log(`  Cloudflare email row found via: ${sel}`);
             await loc.click();
             found = true;
             break;
@@ -224,14 +242,25 @@ async function getVerificationLinkFromYahoo(context) {
         } catch (_) {}
       }
 
-      // Broader search: any element containing "Cloudflare" text
+      // Strategy 2: broader — find clickable element with "Cloudflare" text
       if (!found) {
         try {
-          const allText = inbox.locator('text*="Cloudflare"').first();
-          if (await allText.isVisible({ timeout: 1000 }).catch(() => false)) {
-            console.log('  Cloudflare reference found via text search');
-            await allText.click();
-            found = true;
+          const candidates = inbox.locator('*:has-text("Cloudflare")');
+          const count = await candidates.count().catch(() => 0);
+          for (let j = 0; j < Math.min(count, 10); j++) {
+            const el = candidates.nth(j);
+            const tagName = await el.evaluate(e => e.tagName).catch(() => '');
+            const isClickable = await el.evaluate(e => {
+              const rect = e.getBoundingClientRect();
+              if (rect.width < 100 || rect.height < 20) return false;
+              return e.onclick !== null || e.getAttribute('role') === 'button' || e.tagName === 'A' || rect.width > 200;
+            }).catch(() => false);
+            if (isClickable) {
+              console.log(`  Cloudflare email found via broad search (${tagName})`);
+              await el.click();
+              found = true;
+              break;
+            }
           }
         } catch (_) {}
       }
@@ -240,8 +269,7 @@ async function getVerificationLinkFromYahoo(context) {
         console.log('  Opening email...');
         await sleep(rand(3000, 5000));
 
-        // Extract verification URL from email body
-        // Method 1: direct link
+        // Extract verification URL from opened email
         const verifyLink = inbox.locator('a[href*="dash.cloudflare.com/email-verification"]').first();
         const href = await verifyLink.getAttribute('href').catch(() => null);
 
@@ -251,7 +279,6 @@ async function getVerificationLinkFromYahoo(context) {
           break;
         }
 
-        // Method 2: any link with email-verification
         const allLinks = await inbox.locator('a[href*="email-verification"]').all();
         for (const link of allLinks) {
           const h = await link.getAttribute('href').catch(() => null);
@@ -263,7 +290,6 @@ async function getVerificationLinkFromYahoo(context) {
         }
         if (verifyUrl) break;
 
-        // Method 3: search body text for URL
         const bodyText = await inbox.locator('body').textContent().catch(() => '');
         const match = bodyText.match(/https:\/\/dash\.cloudflare\.com\/email-verification\?token=[^\s"'<>]+/);
         if (match) {
@@ -273,19 +299,22 @@ async function getVerificationLinkFromYahoo(context) {
         }
 
         console.log('  Email opened but no verification link found. Will retry...');
-        await inbox.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+        await inbox.goto(unreadUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
         await sleep(rand(3000, 5000));
       } else {
-        console.log(`  No Cloudflare email yet. Waiting ${CONFIG.emailPollMs / 1000}s...`);
+        console.log(`  No Cloudflare email in unread. Waiting ${CONFIG.emailPollMs / 1000}s...`);
         await sleep(CONFIG.emailPollMs);
-        await inbox.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+        await inbox.goto(unreadUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
         await sleep(rand(3000, 5000));
       }
     }
   } catch (e) {
     console.log(`  Yahoo error: ${e.message}`);
   } finally {
-    // Close the Yahoo tab after extracting the link
+    if (verifyUrl) {
+      console.log('  Closing Yahoo tab in 5s...');
+      await sleep(5000);
+    }
     if (yahooPage) {
       try { await yahooPage.close(); } catch (_) {}
     }
@@ -320,7 +349,7 @@ async function main() {
   await sleep(2000);
 
   // ─── Step 1: Launch Chrome ────────────────────────────
-  console.log('[1/7] Launching Chrome (headed, CDP)...');
+  console.log('[1/8] Launching Chrome (headed, CDP)...');
   const chromeProc = spawn(chromePath, [
     `--remote-debugging-port=${CONFIG.chromeDebugPort}`,
     `--user-data-dir=${CONFIG.profileDir}`,
@@ -349,7 +378,7 @@ async function main() {
   const page = context.pages()[0] || await context.newPage();
 
   // ─── Step 2: Navigate to login page ───────────────────
-  console.log('[2/7] Navigating to login page...');
+  console.log('[2/8] Navigating to login page...');
   await page.goto(CONFIG.loginUrl, { waitUntil: 'domcontentloaded', timeout: CONFIG.navigateTimeout });
 
   // Wait for URL to stabilize
@@ -374,7 +403,7 @@ async function main() {
   }
 
   // ─── Step 3: Wait for login form + fill ───────────────
-  console.log('[3/7] Waiting for login form...');
+  console.log('[3/8] Waiting for login form...');
   let formReady = false;
   for (let i = 0; i < 30; i++) {
     // Try multiple selectors for login form
@@ -456,7 +485,7 @@ async function main() {
   console.log('  Login form filled.');
 
   // ─── Step 4: Handle Turnstile + submit ────────────────
-  console.log('[4/7] Checking for Turnstile on login page...');
+  console.log('[4/8] Checking for Turnstile on login page...');
   // Check if Turnstile is present
   let hasTurnstile = false;
   for (let i = 0; i < 10; i++) {
@@ -545,23 +574,24 @@ async function main() {
 // ─── Verification flow (shared) ───────────────────────────
 async function doVerification(context, page, email, accountId, browser, chromeProc) {
   if (!accountId) {
-    console.log('[5/7] Skipping verification — login failed.');
-    console.log('[6/7] Skipping.');
-    console.log('[7/7] Skipping.');
+    console.log('[5/8] Skipping verification — login failed.');
+    console.log('[6/8] Skipping.');
+    console.log('[7/8] Skipping.');
+    console.log('[8/8] Skipping logout — login failed.');
     printResult(email, accountId, false, page.url());
     keepOpen(browser, chromeProc);
     return;
   }
 
   // ─── Step 5: Get verification link from Yahoo ─────────
-  console.log('[5/7] Getting verification link from Yahoo...');
+  console.log('[5/8] Getting verification link from Yahoo...');
   const verifyUrl = await getVerificationLinkFromYahoo(context);
 
   let verified = false;
 
   if (verifyUrl) {
     // ─── Step 6: Open verification link + handle Turnstile ──
-    console.log('[6/7] Opening verification link...');
+    console.log('[6/8] Opening verification link...');
     try {
       const verifyPage = await context.newPage();
       console.log(`  Navigating to: ${verifyUrl.slice(0, 80)}...`);
@@ -644,7 +674,8 @@ async function doVerification(context, page, email, accountId, browser, chromePr
 
         if (i % 5 === 4) console.log(`  Still waiting... (${i + 1}/45) URL: ${currentUrl.slice(0, 60)}`);
       }
-
+      console.log('  Closing verification page in 5s...');
+      await sleep(5000);
       await verifyPage.close().catch(() => {});
     } catch (e) {
       console.log(`  Verification page error: ${e.message}`);
@@ -654,7 +685,7 @@ async function doVerification(context, page, email, accountId, browser, chromePr
   }
 
   // ─── Step 7: Update CSV ───────────────────────────────
-  console.log('[7/7] Updating CSV...');
+  console.log('[7/8] Updating CSV...');
   if (verified && fs.existsSync(CONFIG.outputFile)) {
     try {
       const content = fs.readFileSync(CONFIG.outputFile, 'utf8');
@@ -670,6 +701,70 @@ async function doVerification(context, page, email, accountId, browser, chromePr
     } catch (e) {
       console.log(`  CSV update error: ${e.message}`);
     }
+  }
+
+  // ─── Step 7.5: Create API key (AI Gateway auth token) ──
+  if (verified && accountId) {
+    console.log('[API] Creating AI Gateway auth token...');
+    const apiKeyResult = await createApiKey({ context, accountId, email, outputFile: CONFIG.outputFile });
+    if (apiKeyResult) console.log(`  [API] API key created: ${apiKeyResult.name}`);
+    else console.log('  [API] API key creation skipped/failed.');
+  }
+
+  // ─── Step 8: Logout from Cloudflare ──────────────────
+  if (accountId) {
+    console.log('[8/8] Logging out from Cloudflare...');
+    try {
+      // Click user menu button → click "Log out" menu item
+      const userMenuBtn = page.locator('button[data-testid="kumo-user-dropdown-button"]').first();
+      if (await userMenuBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await userMenuBtn.click();
+        console.log('  Clicked user menu.');
+        await sleep(2000);
+
+        const logoutItem = page.locator('[data-testid="kumo-user-dropdown-logout"]').first();
+        if (await logoutItem.isVisible({ timeout: 5000 }).catch(() => false)) {
+          await logoutItem.click();
+          console.log('  Clicked Log out.');
+          await sleep(2000);
+        } else {
+          const logoutByText = page.locator('text="Log out"').first();
+          if (await logoutByText.isVisible({ timeout: 3000 }).catch(() => false)) {
+            await logoutByText.click();
+            console.log('  Clicked Log out (by text).');
+            await sleep(2000);
+          } else {
+            console.log('  Logout button not found. Trying API fallback...');
+            await page.evaluate(() => fetch('/api/v4/user/sessions/current', { method: 'DELETE' })).catch(() => {});
+          }
+        }
+      } else {
+        console.log('  User menu not found. Trying API logout...');
+        await page.evaluate(() => fetch('/api/v4/user/sessions/current', { method: 'DELETE' })).catch(() => {});
+      }
+
+      // Wait for redirect to login page
+      for (let i = 0; i < 15; i++) {
+        await sleep(2000);
+        const currentUrl = page.url();
+        if (currentUrl.includes('/login') || currentUrl === 'https://dash.cloudflare.com/') {
+          console.log(`  Logged out!`);
+          break;
+        }
+        if (i === 14) {
+          await page.goto('https://dash.cloudflare.com/login', { waitUntil: 'domcontentloaded' }).catch(() => {});
+          console.log('  Forced navigation to login page.');
+        }
+      }
+    } catch (e) {
+      console.log(`  Logout error: ${e.message}`);
+      try {
+        await page.goto('https://dash.cloudflare.com/login', { waitUntil: 'domcontentloaded' }).catch(() => {});
+        console.log('  Fallback: navigated to login page.');
+      } catch (_) {}
+    }
+  } else {
+    console.log('[8/8] Skipping logout — login failed.');
   }
 
   printResult(email, accountId, verified, page.url());

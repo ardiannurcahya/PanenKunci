@@ -1,7 +1,7 @@
 {
-  "name": "xiaomi-mimo-autoreg",
+  "name": "panenkunci",
   "version": "1.0.0",
-  "description": "Auto register accounts on Xiaomi MiMo API Open Platform using Playwright + TempMail",
+  "description": "PanenKunci — multi-platform automated account registration bots using Playwright + TempMail",
   "main": "register.js",
   "scripts": {
     "register": "node src/bots/xiaomi/register.js",
@@ -18,6 +18,7 @@
     "tempmail": "node src/lib/tempmail.js",
     "cloudflare": "node src/bots/cloudflare/register.js",
     "cloudflare-login": "node src/bots/cloudflare/login-only.js",
+    "cloudflare-provider": "node src/bots/cloudflare/add-provider.js",
     "playwright:install": "npx playwright install chromium"
   },
   "keywords": [

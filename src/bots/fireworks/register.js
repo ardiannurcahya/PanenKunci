@@ -48,15 +48,32 @@ const CATEGORY_2 = [
 ];
 
 // ─── HELPERS ─────────────────────────────────────────────
-function generatePassword() {
-  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const nums = '0123456789';
+function generatePassword(length = 12) {
+  const lower = 'abcdefghijklmnopqrstuvwxyz';
+  const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const numbers = '0123456789';
   const specials = '#!@';
-  let pw = '';
-  for (let i = 0; i < 6; i++) pw += chars[rand(0, chars.length)];
-  for (let i = 0; i < 2; i++) pw += nums[rand(0, nums.length)];
-  pw += specials[rand(0, specials.length)];
-  return pw;
+
+  const all = lower + upper + numbers + specials;
+
+  const password = [
+    lower[rand(0, lower.length)],
+    upper[rand(0, upper.length)],
+    numbers[rand(0, numbers.length)],
+    specials[rand(0, specials.length)],
+  ];
+
+  while (password.length < length) {
+    password.push(all[rand(0, all.length)]);
+  }
+
+  // Fisher-Yates shuffle
+  for (let i = password.length - 1; i > 0; i--) {
+    const j = rand(0, i + 1);
+    [password[i], password[j]] = [password[j], password[i]];
+  }
+
+  return password.join('');
 }
 
 function shuffleArray(arr) {

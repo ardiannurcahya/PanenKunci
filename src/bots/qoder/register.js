@@ -26,13 +26,13 @@ const { stepInputOtp } = require('./steps/otp');
 // ─── CONFIG ──────────────────────────────────────────────
 const CONFIG = {
   // Platform URL
-  platformUrl: process.env.PLATFORM_URL,
+  platformUrl: process.env.PLATFORM_9ROUTER_URL,
   // Qoder provider page
   qoderUrl: process.env.QODER_URL,
   // Output file
   outputFile: path.join(__dirname, '../../../output/keys.csv'),
   // Platform password (for first-time access)
-  platformPassword: process.env.PLATFORM_PASSWORD,
+  platformPassword: process.env.PLATFORM_9ROUTER_PASSWORD,
   // Password for Qoder accounts
   password: process.env.QODER_ACCOUNT_PASSWORD,
   // Timeouts (ms)

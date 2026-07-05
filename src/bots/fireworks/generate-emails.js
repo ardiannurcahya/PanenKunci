@@ -12,7 +12,7 @@ const CONFIG = {
   yahooPassword: process.env.YAHOO_PASSWORD || '',
   baseAddress: process.env.YAHOO_BASE_ADDRESS || '',
   totalEmails: 100,
-  keywordPrefix: 'fw',
+  keywordPrefix: 'blq',
   outputFile: path.join(__dirname, '../../../data/config.json'),
   navigateTimeout: 30000,
 };
