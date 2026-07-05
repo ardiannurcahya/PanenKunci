@@ -1,11 +1,22 @@
 node_modules/
-*.png
-test.txt
-keys.csv
 *.log
 .env
-alibaba.csv
-null
-alibaba_documentation.txt
 AGENTS.md
-nul
+
+# Output files
+output/
+*.csv
+
+# Data config (contains email lists)
+data/config.json
+data/config2.json
+data/config3.json
+data/password.txt
+
+# Debug artifacts
+*.png
+*.lock
+__pycache__/
+
+# Archive (credential files)
+archive/
