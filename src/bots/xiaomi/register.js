@@ -11,7 +11,8 @@ const fs = require('fs');
 const path = require('path');
 
 const { findFfmpeg } = require('../../lib/ffmpeg');
-const { sleep, rand, typeHuman, handleCookies } = require('../../lib/helpers');
+const { sleep, rand, typeHuman, handleCookies, redact } = require('../../lib/helpers');
+const { ensureOutputDir } = require('../../lib/csv');
 const { solveRecaptchaWith2captcha, waitForCaptchaSolved } = require('../../lib/captcha');
 const { solveImageCaptcha: solveImageCaptchaCapMonster } = require('../../lib/capmonster');
 const SolveCaptcha = require('solvecaptcha-javascript');
@@ -350,7 +351,7 @@ async function register() {
 
   if (CONFIG.proxy) {
     launchOpts.proxy = { server: CONFIG.proxy };
-    console.log(`  Proxy: ${CONFIG.proxy.split('@').pop() || CONFIG.proxy}`);
+    console.log(`  Proxy: ${redact(CONFIG.proxy)}`);
   }
   const browser = await chromium.launch(launchOpts);
 
@@ -863,6 +864,7 @@ async function register() {
     ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
 
     const csvPath = CONFIG.outputFile;
+    ensureOutputDir(csvPath);
     const exists = fs.existsSync(csvPath);
     if (!exists) {
       fs.writeFileSync(csvPath, csvHeaders + '\n', 'utf8');
@@ -874,8 +876,8 @@ async function register() {
     console.log('  REGISTRATION SUMMARY');
     console.log('========================================');
     console.log(`  Email:      ${email}`);
-    console.log(`  Password:   ${CONFIG.password}`);
-    console.log(`  API Key:    ${apiKey || 'NOT_FOUND'}`);
+    console.log(`  Password:   ${redact(CONFIG.password)}`);
+    console.log(`  API Key:    ${apiKey ? redact(apiKey) : 'NOT_FOUND'}`);
     console.log(`  Saved to:   ${CONFIG.outputFile}`);
     console.log('========================================\n');
     console.log('Browser will close in 30 seconds...');

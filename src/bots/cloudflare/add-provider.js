@@ -2,7 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
 const { loadEnv } = require('../../lib/env');
-const { sleep, rand } = require('../../lib/helpers');
+const { sleep, rand, redact } = require('../../lib/helpers');
+const { ensureOutputDir } = require('../../lib/csv');
 
 loadEnv();
 
@@ -89,6 +90,7 @@ function loadUploaded(trackingFile) {
 }
 
 function markUploaded(trackingFile, email) {
+  ensureOutputDir(trackingFile);
   const lockPath = trackingFile + '.lock';
   for (let i = 0; i < 10; i++) {
     try { fs.writeFileSync(lockPath, String(process.pid), { flag: 'wx' }); break; } catch (e) {
@@ -187,7 +189,7 @@ async function findAccountIdField(page) {
 // ─── Add one entry: Add → fill name/api_key/account_id → Save ──
 async function addOneEntry(page, row, index, total) {
   const tag = `[${index + 1}/${total}]`;
-  console.log(`${tag} Adding: name=${row.name}  account=${row.accountId.slice(0, 8)}...  key=${row.apiKey.slice(0, 8)}...`);
+  console.log(`${tag} Adding: name=${row.name}  account=${redact(row.accountId)}  key=${redact(row.apiKey)}`);
 
   // 1. Click "Add"
   const addBtn = await findAddButton(page);

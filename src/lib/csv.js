@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { redact } = require('./helpers');
 
 const LOCK_MAX_RETRIES = 10;
 const LOCK_RETRY_MS = 200;
@@ -36,14 +37,49 @@ function releaseLock(lockPath) {
   try { fs.unlinkSync(lockPath); } catch (_) {}
 }
 
+function ensureOutputDir(outputFile) {
+  fs.mkdirSync(path.dirname(outputFile), { recursive: true });
+}
+
+function parseCsvLine(line) {
+  const values = [];
+  let value = '';
+  let inQuotes = false;
+  const input = String(line).replace(/\r$/, '');
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (input[i + 1] === '"') { value += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        value += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ',') {
+      values.push(value);
+      value = '';
+    } else {
+      value += ch;
+    }
+  }
+  values.push(value);
+  return values;
+}
+
+function stringifyCsvRow(values) {
+  return values.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',');
+}
+
 function saveToCsv(outputFile, email, password, apiKey) {
+  ensureOutputDir(outputFile);
   const lockPath = outputFile + '.lock';
   acquireLock(lockPath);
   try {
     const csvHeaders = 'email,password,apikey';
-    const csvRow = [email, password, apiKey || '']
-      .map(v => `"${String(v).replace(/"/g, '""')}"`)
-      .join(',');
+    const csvRow = stringifyCsvRow([email, password, apiKey || '']);
 
     if (!fs.existsSync(outputFile)) {
       fs.writeFileSync(outputFile, csvHeaders + '\n' + csvRow + '\n', 'utf8');
@@ -62,28 +98,28 @@ function saveToCsv(outputFile, email, password, apiKey) {
 }
 
 function updateCsvApiKey(outputFile, email, apiKey) {
+  if (!fs.existsSync(outputFile)) return;
+  ensureOutputDir(outputFile);
   const lockPath = outputFile + '.lock';
   acquireLock(lockPath);
   try {
-    if (!fs.existsSync(outputFile)) return;
     const content = fs.readFileSync(outputFile, 'utf8');
     const lines = content.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      if (!lines[i].includes(email)) continue;
-      const matches = lines[i].match(/"[^"]*"/g);
-      if (matches && matches.length >= 3) {
-        matches[2] = `"${String(apiKey || 'NOT_FOUND').replace(/"/g, '""')}"`;
-        lines[i] = matches.join(',');
-      }
+    for (let i = 1; i < lines.length; i++) {
+      if (!lines[i].trim()) continue;
+      const cols = parseCsvLine(lines[i]);
+      if (cols[0] !== email) continue;
+      cols[2] = apiKey || 'NOT_FOUND';
+      lines[i] = stringifyCsvRow(cols);
       break;
     }
     let result = lines.join('\n');
     if (!result.endsWith('\n')) result += '\n';
     fs.writeFileSync(outputFile, result, 'utf8');
-    console.log(`  Updated CSV with API key: ${apiKey || 'NOT_FOUND'}`);
+    console.log(`  Updated CSV with API key: ${apiKey ? redact(apiKey) : 'NOT_FOUND'}`);
   } finally {
     releaseLock(lockPath);
   }
 }
 
-module.exports = { saveToCsv, updateCsvApiKey };
+module.exports = { saveToCsv, updateCsvApiKey, parseCsvLine, stringifyCsvRow, ensureOutputDir };

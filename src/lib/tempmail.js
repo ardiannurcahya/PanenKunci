@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { redact } = require('./helpers');
 
 class TempMail {
     static SUPABASE_URL = "https://ijrccpgiulrmfpavazsl.supabase.co";
@@ -220,7 +221,7 @@ if (require.main === module) {
                 const inbox = await client.createInbox();
                 const email = inbox.address;
                 console.log(`\nCreated successfully! Alamat email: \x1b[1m\x1b[32m${email}\x1b[0m`);
-                console.log("Token pemilik (owner_token):", inbox.owner_token);
+                console.log("Token pemilik (owner_token):", redact(inbox.owner_token));
                 console.log("\nAnda bisa mengirimkan email ke alamat ini sekarang.");
                 console.log("Menunggu email masuk dan mendeteksi kode verifikasi (OTP)...");
 

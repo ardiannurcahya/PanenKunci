@@ -1,5 +1,6 @@
 const fs = require('fs');
-const { sleep, rand, fillHuman } = require('../../lib/helpers');
+const { sleep, rand, fillHuman, redact } = require('../../lib/helpers');
+const { ensureOutputDir, parseCsvLine, stringifyCsvRow } = require('../../lib/csv');
 
 // Timeouts (ms)
 const AI_GATEWAY_TIMEOUT = 30000; // wait for "Create authentication token" button
@@ -60,6 +61,7 @@ async function scrapeTokenFromPage(page, accountId) {
 // Append the api_key as a 5th column on the matching email row (migrates the header once).
 function appendApiKeyToCsv(outputFile, email, token) {
   if (!fs.existsSync(outputFile)) return;
+  ensureOutputDir(outputFile);
   const lockPath = outputFile + '.lock';
   for (let i = 0; i < 10; i++) {
     try { fs.writeFileSync(lockPath, String(process.pid), { flag: 'wx' }); break; } catch (e) {
@@ -82,11 +84,12 @@ function appendApiKeyToCsv(outputFile, email, token) {
       lines[0] = lines[0].trim() + ',api_key';
     }
     for (let i = 1; i < lines.length; i++) {
-      const line = lines[i];
-      if (line.includes(email) && !line.includes(token)) {
-        lines[i] = line.replace(/\r?\n?$/, '') + `,"${token}"`;
-        break;
-      }
+      if (!lines[i].trim()) continue;
+      const cols = parseCsvLine(lines[i]);
+      if (cols[0] !== email) continue;
+      cols[4] = token;
+      lines[i] = stringifyCsvRow(cols);
+      break;
     }
     fs.writeFileSync(outputFile, lines.join('\n'), 'utf8');
   } finally {
@@ -249,7 +252,7 @@ async function createApiKey({ context, accountId, email, name, outputFile } = {}
       console.log('  [API] Could not capture the token (manual copy may be needed).');
       return null;
     }
-    console.log(`  [API] Token: ${token.slice(0, 12)}...${token.slice(-4)}`);
+    console.log(`  [API] Token: ${redact(token)}`);
 
     // 6. Persist the token back to the account's CSV row (appends an api_key column).
     if (outputFile && email) {
@@ -270,4 +273,4 @@ async function createApiKey({ context, accountId, email, name, outputFile } = {}
   }
 }
 
-module.exports = { createApiKey, CONFIG: { AI_GATEWAY_TIMEOUT, TOKEN_WAIT_TIMEOUT } };
+module.exports = { createApiKey, appendApiKeyToCsv, CONFIG: { AI_GATEWAY_TIMEOUT, TOKEN_WAIT_TIMEOUT } };

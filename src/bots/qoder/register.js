@@ -14,7 +14,7 @@ const { chromium } = require('playwright-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth')();
 chromium.use(StealthPlugin);
 
-const { sleep, rand } = require('../../lib/helpers');
+const { sleep, rand, redact } = require('../../lib/helpers');
 
 // Modular steps
 const { stepNavigatePlatform, stepNavigateQoder } = require('./steps/navigate');
@@ -102,7 +102,7 @@ async function main() {
   };
   if (CONFIG.proxy) {
     launchOpts.proxy = { server: CONFIG.proxy };
-    console.log(`  Proxy: ${CONFIG.proxy}`);
+    console.log(`  Proxy: ${redact(CONFIG.proxy)}`);
   }
   const browser = await chromium.launch(launchOpts);
 

@@ -5,7 +5,8 @@ const path = require('path');
 const fs = require('fs');
 
 const { loadEnv } = require('../../lib/env');
-const { sleep, rand, fillHuman } = require('../../lib/helpers');
+const { sleep, rand, fillHuman, redact } = require('../../lib/helpers');
+const { parseCsvLine, stringifyCsvRow } = require('../../lib/csv');
 const { createApiKey } = require('./get-api-key');
 
 loadEnv();
@@ -329,7 +330,7 @@ async function main() {
 
   const { email, password } = getCredentials();
   console.log(`Email:    ${email}`);
-  console.log(`Password: ${password}`);
+  console.log(`Password: ${redact(password)}`);
   console.log('');
 
   const chromePath = findChromePath();
@@ -690,11 +691,13 @@ async function doVerification(context, page, email, accountId, browser, chromePr
     try {
       const content = fs.readFileSync(CONFIG.outputFile, 'utf8');
       const lines = content.split('\n');
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].includes(email) && lines[i].includes('registered')) {
-          lines[i] = lines[i].replace('registered', 'verified');
-          break;
-        }
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        const cols = parseCsvLine(lines[i]);
+        if (cols[0] !== email || cols[3] !== 'registered') continue;
+        cols[3] = 'verified';
+        lines[i] = stringifyCsvRow(cols);
+        break;
       }
       fs.writeFileSync(CONFIG.outputFile, lines.join('\n'), 'utf8');
       console.log('  CSV updated: status = verified');

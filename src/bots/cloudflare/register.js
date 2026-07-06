@@ -5,7 +5,8 @@ const path = require('path');
 const fs = require('fs');
 
 const { loadEnv } = require('../../lib/env');
-const { sleep, rand, fillHuman } = require('../../lib/helpers');
+const { sleep, rand, fillHuman, redact } = require('../../lib/helpers');
+const { ensureOutputDir, parseCsvLine, stringifyCsvRow } = require('../../lib/csv');
 const { createTask, getTaskResult } = require('../../lib/capmonster');
 const { createApiKey } = require('./get-api-key');
 
@@ -33,6 +34,7 @@ const CONFIG = {
 
 // ─── CSV writer (4 columns: email,password,account_id,status) ──
 function saveCloudflareCsv(outputFile, email, password, accountId, status) {
+  ensureOutputDir(outputFile);
   const lockPath = outputFile + '.lock';
   for (let i = 0; i < 10; i++) {
     try {
@@ -53,9 +55,7 @@ function saveCloudflareCsv(outputFile, email, password, accountId, status) {
   }
   try {
     const headers = 'email,password,account_id,status';
-    const row = [email, password, accountId || '', status || '']
-      .map(v => `"${String(v).replace(/"/g, '""')}"`)
-      .join(',');
+    const row = stringifyCsvRow([email, password, accountId || '', status || '']);
     if (!fs.existsSync(outputFile)) {
       fs.writeFileSync(outputFile, headers + '\n' + row + '\n', 'utf8');
     } else {
@@ -439,7 +439,7 @@ async function registerOne(context, page, email, password, index, total) {
   const tag = `[${index + 1}/${total}]`;
   console.log(`\n${'='.repeat(50)}`);
   console.log(`${tag} Registering: ${email}`);
-  console.log(`${tag} Password: ${password}`);
+  console.log(`${tag} Password: ${redact(password)}`);
   console.log(`${'='.repeat(50)}\n`);
 
   let accountId = null;
@@ -565,7 +565,7 @@ async function registerOne(context, page, email, password, index, total) {
       console.log(`  CapMonster task: ${taskId}. Waiting...`);
       const solution = await getTaskResult(CONFIG.capmonsterApiKey, taskId, { timeoutMs: 120000, pollMs: 3000 });
       token = solution.token || (solution.data && solution.data.token) || solution.value;
-      if (token) console.log(`  Token: ${token.slice(0, 50)}...`);
+      if (token) console.log(`  Token: ${redact(token)}`);
     } catch (e) { console.log(`  CapMonster error: ${e.message}`); }
 
     if (token) {
@@ -709,8 +709,13 @@ async function registerOne(context, page, email, password, index, total) {
     try {
       const content = fs.readFileSync(CONFIG.outputFile, 'utf8');
       const lines = content.split('\n');
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].includes(email) && lines[i].includes('registered')) { lines[i] = lines[i].replace('registered', 'verified'); break; }
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        const cols = parseCsvLine(lines[i]);
+        if (cols[0] !== email || cols[3] !== 'registered') continue;
+        cols[3] = 'verified';
+        lines[i] = stringifyCsvRow(cols);
+        break;
       }
       fs.writeFileSync(CONFIG.outputFile, lines.join('\n'), 'utf8');
       console.log('  CSV updated: status = verified');

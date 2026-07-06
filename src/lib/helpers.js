@@ -70,6 +70,14 @@ async function clickFirst(page, selectors, description = 'element', timeout = 10
   return false;
 }
 
+function redact(value, keepStart = 4, keepEnd = 4) {
+  if (value === undefined || value === null || value === '') return '';
+  const s = String(value);
+  if (keepStart <= 0 && keepEnd <= 0) return '*'.repeat(Math.min(s.length, 8));
+  if (s.length <= keepStart + keepEnd) return '*'.repeat(Math.min(s.length, 8));
+  return `${s.slice(0, keepStart)}...${s.slice(-keepEnd)}`;
+}
+
 // Cookie agreement handler
 async function handleCookies(page, waitMs = 1500) {
   await sleep(waitMs);
@@ -113,5 +121,6 @@ module.exports = {
   humanMouseMove,
   humanScroll,
   clickFirst,
+  redact,
   handleCookies,
 };

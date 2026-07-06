@@ -5,7 +5,7 @@ const { chromium } = require('playwright');
 
 const fs = require('fs');
 const path = require('path');
-const { sleep, rand } = require('../../lib/helpers');
+const { sleep, rand, redact } = require('../../lib/helpers');
 const { randomFirstName, randomLastName } = require('../../lib/names');
 const { saveToCsv, updateCsvApiKey } = require('../../lib/csv');
 
@@ -128,7 +128,7 @@ async function registerOne(page, email, password, index, total) {
 
   console.log(`\n${'='.repeat(50)}`);
   console.log(`${tag} Registering: ${email}`);
-  console.log(`${tag} Password: ${password}`);
+  console.log(`${tag} Password: ${redact(password)}`);
   console.log(`${tag} Name: ${firstName} ${lastName}`);
   console.log(`${'='.repeat(50)}\n`);
 
@@ -335,7 +335,7 @@ async function registerOne(page, email, password, index, total) {
       console.log(`${tag} [WARN] Could not extract API key automatically`);
     }
 
-    console.log(`${tag} API Key: ${apiKey || 'NOT_FOUND'}`);
+    console.log(`${tag} API Key: ${apiKey ? redact(apiKey) : 'NOT_FOUND'}`);
 
     // Update CSV with API key
     updateCsvApiKey(CONFIG.outputFile, email, apiKey);
@@ -371,7 +371,7 @@ async function main() {
     const launchOpts = { headless: true };
     if (CONFIG.proxy) {
       launchOpts.proxy = { server: CONFIG.proxy };
-      console.log(`  Proxy: ${CONFIG.proxy}`);
+      console.log(`  Proxy: ${redact(CONFIG.proxy)}`);
     }
     const browser = await chromium.launch(launchOpts);
     const context = await browser.newContext();

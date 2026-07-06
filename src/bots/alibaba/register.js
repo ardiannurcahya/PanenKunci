@@ -9,7 +9,8 @@ const TempMail = require('../../lib/tempmail');
 const fs = require('fs');
 const path = require('path');
 
-const { sleep, rand, handleCookies, humanMouseMove, humanScroll } = require('../../lib/helpers');
+const { sleep, rand, handleCookies, humanMouseMove, humanScroll, redact } = require('../../lib/helpers');
+const { ensureOutputDir } = require('../../lib/csv');
 const { solveAliyunCaptcha } = require('../../lib/capmonster');
 
 const CONFIG = {
@@ -53,7 +54,7 @@ async function register() {
 
   if (CONFIG.proxy) {
     launchOpts.proxy = { server: CONFIG.proxy };
-    console.log(`  Proxy: ${CONFIG.proxy.split('@').pop() || CONFIG.proxy}`);
+    console.log(`  Proxy: ${redact(CONFIG.proxy)}`);
   }
   const browser = await chromium.launch(launchOpts);
 
@@ -952,6 +953,7 @@ async function register() {
     ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
 
     const csvPath = CONFIG.outputFile;
+    ensureOutputDir(csvPath);
     const exists = fs.existsSync(csvPath);
     if (!exists) {
       fs.writeFileSync(csvPath, csvHeaders + '\n', 'utf8');
@@ -963,8 +965,8 @@ async function register() {
     console.log('  ALIBABA REGISTRATION SUMMARY');
     console.log('========================================');
     console.log(`  Email:    ${email}`);
-    console.log(`  Password: ${CONFIG.password}`);
-    console.log(`  API Key:  ${apiKey || 'check browser manually'}`);
+    console.log(`  Password: ${redact(CONFIG.password)}`);
+    console.log(`  API Key:  ${apiKey ? redact(apiKey) : 'check browser manually'}`);
     console.log(`  Saved to: ${CONFIG.outputFile}`);
     console.log('========================================\n');
     console.log('Browser will close in 30 seconds...');
