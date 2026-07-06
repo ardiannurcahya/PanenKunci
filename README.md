@@ -35,7 +35,7 @@
 | [Xiaomi MiMo](https://platform.xiaomimimo.com)    | `src/bots/xiaomi/register.js`     | `npm run register`   | ✅ Yes ($0.72 credits)                     |
 | [Alibaba Cloud](https://account.alibabacloud.com) | `src/bots/alibaba/register.js`    | `npm run alibaba`    | ⚠️ No (Free tier is no longer supported) |
 | [Qoder](https://qoder.com)                        | `src/bots/qoder/register.js`      | `npm run qoder`      | ⚠️ No (Free tier is no longer supported) |
-| [Fireworks AI](https://app.fireworks.ai)          | `src/bots/fireworks/register.js`  | `npm run fireworks`  | ✅ Yes ($6 credits)                        |
+| [Fireworks AI](https://app.fireworks.ai)          | `src/bots/fireworks/register.js`  | `npm run fireworks`  | ⚠️ No (Free tier is no longer supported) |
 | [Cloudflare](https://dash.cloudflare.com)         | `src/bots/cloudflare/register.js` | `npm run cloudflare` | ✅ Yes (reset 10 credit/day)               |
 
 ## 📦 Prerequisites
