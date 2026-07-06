@@ -5,7 +5,7 @@
 // CapMonster returns a TOKEN that must be injected back into the AliyunCaptcha
 // widget. Token injection is handled here; see INJECT_STRATEGIES below.
 
-const { sleep } = require('./helpers');
+const { sleep, redact } = require('./helpers');
 
 const CAPMONSTER_API = 'https://api.capmonster.cloud';
 
@@ -332,7 +332,7 @@ async function solveAliyunCaptcha(page, options) {
       console.log(`  Solution: ${JSON.stringify(solution).slice(0, 300)}`);
       return false;
     }
-    console.log(`  Token received (truncated): ${String(tokens).slice(0, 60)}...`);
+    console.log(`  Token received: ${redact(tokens)}`);
 
     // 4. Inject the token back into the widget
     console.log('  Injecting token into AliyunCaptcha widget...');

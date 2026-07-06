@@ -4,6 +4,7 @@
   "description": "PanenKunci — multi-platform automated account registration bots using Playwright + TempMail",
   "main": "register.js",
   "scripts": {
+    "test": "node test_csv_safety.js",
     "register": "node src/bots/xiaomi/register.js",
     "qoder": "node src/bots/qoder/register.js",
     "alibaba": "node src/bots/alibaba/register.js",

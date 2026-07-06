@@ -34,6 +34,7 @@ function saveResult(outputFile, data) {
     data.status || 'registered',
   ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
 
+  fs.mkdirSync(path.dirname(outputFile), { recursive: true });
   const exists = fs.existsSync(outputFile);
   if (!exists) {
     fs.writeFileSync(outputFile, csvHeaders + '\n', 'utf8');
