@@ -32,7 +32,7 @@
 
 | Platform                                         | Script                              | Command                | Free Tier                                  |
 | ------------------------------------------------ | ----------------------------------- | ---------------------- | ------------------------------------------ |
-| [Xiaomi MiMo](https://platform.xiaomimimo.com)    | `src/bots/xiaomi/register.js`     | `npm run register`   | ⚠️ No (Free tier is no longer supported)  |
+| [Xiaomi MiMo](https://platform.xiaomimimo.com)    | `src/bots/xiaomi/register.js`     | `npm run register`   | ⚠️ Need update captcha solver |
 | [Alibaba Cloud](https://account.alibabacloud.com) | `src/bots/alibaba/register.js`    | `npm run alibaba`    | ⚠️ No (Free tier is no longer supported) |
 | [Qoder](https://qoder.com)                        | `src/bots/qoder/register.js`      | `npm run qoder`      | ⚠️ No (Free tier is no longer supported) |
 | [Fireworks AI](https://app.fireworks.ai)          | `src/bots/fireworks/register.js`  | `npm run fireworks`  | ⚠️ No (Free tier is no longer supported) |
@@ -120,7 +120,7 @@ npm run loop                  # Xiaomi loop mode (proxy rotation)
 npm run verify                # Fireworks email verifier (Yahoo inbox monitor)
 
 # Provider upload (push Cloudflare API keys to llm-agent-trade dashboard)
-npm run cloudflare-provider   # Upload all cloudflare.csv rows that have an api_key (anti-duplikat)
+npm run cloudflare-provider   # Upload all cloudflare.csv rows that have an api_key to 9router (anti-duplikat)
 
 # Utilities
 npm run fireworks-emails      # Generate 100 disposable Yahoo emails → data/config.json
@@ -354,7 +354,7 @@ npm run cloudflare-provider -- 3   # upload first 3 only (for testing)
 
 This is a separate automation (`src/bots/cloudflare/add-provider.js`) that:
 
-1. Logs in to `api.llm-agent-trade.my.id` (password from `PLATFORM_9ROUTER_PASSWORD`, URL from `PLATFORM_9ROUTER_URL`)
+1. Logs in to `9router` (password from `PLATFORM_9ROUTER_PASSWORD`, URL from `PLATFORM_9ROUTER_URL`)
 2. Opens **Providers → Cloudflare**
 3. For each CSV row with an `api_key`: clicks **Add**, fills **Production Key** (= email/name), **password field** (= api_key), **account-id field** (= account_id), then **Save**
 4. Repeats Add → Save for every row
