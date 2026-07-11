@@ -301,8 +301,13 @@ Cloudflare is the most different from the other bots. It does **not** use Playwr
 ### How it works
 
 The bot launches real Chrome on debug port 9222, connects to it via `connectOverCDP`, and reuses a persistent profile at `output/chrome-cf-profile` (so Yahoo login sessions persist between runs).
+Generate yahoo mail auto save into `data/config.json`
+```bash
+npm run fireworks-emails
+```
+Copy list email from `data/config.json` to `data/config2.json`
 
-For each unused email in `data/config.json`:
+For each unused email in `data/config2.json`:
 
 1. Open the Cloudflare signup page
 2. Fill email + auto-generated password
