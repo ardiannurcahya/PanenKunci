@@ -140,7 +140,7 @@ You need a Yahoo account with **disposable email address** support. This is a Ya
 
 **What is a base address?**
 
-A base address is the disposable email prefix you create in Yahoo. For example, if your base address is `naidracn123`, you can generate aliases like `naidracn123-fw01@yahoo.com`, `naidracn123-fw02@yahoo.com`, etc. All of these arrive in your main Yahoo inbox.
+A base address is the disposable email prefix you create in Yahoo. For example, if your base address is `baseadd123`, you can generate aliases like `baseadd123-fw01@yahoo.com`, `baseadd123-fw02@yahoo.com`, etc. All of these arrive in your main Yahoo inbox.
 
 **How to set up (one-time, manual):**
 
