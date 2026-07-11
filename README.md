@@ -38,6 +38,7 @@
 | [Fireworks AI](https://app.fireworks.ai)          | `src/bots/fireworks/register.js`  | `npm run fireworks`  | ⚠️ No (Free tier is no longer supported) |
 | [Cloudflare](https://dash.cloudflare.com)         | `src/bots/cloudflare/register.js` | `npm run cloudflare` | ✅ Yes (reset 10 credit/day)               |
 
+You can get yahoo plus trial by creating new yahoo account and claim trial 30 days on your phone.
 ## 📦 Prerequisites
 
 - Node.js >= 18
